@@ -1,0 +1,450 @@
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.database import get_db
+from app.core.exceptions import ForbiddenError, NotFoundError
+from app.core.ids import parse_id
+from app.core.permissions import require_business_role
+from app.modules.conversions.models import Conversion
+from app.modules.links.models import TrackingLink
+from app.modules.offers.models import Offer, OfferCommissionRule, OfferPartnerAccess
+from app.modules.offers.service import (
+    apply_commission_update,
+    ensure_business_partner,
+    offer_link_stats,
+    offer_public_fields,
+    offer_stats,
+    offer_timeseries,
+    partner_access_query,
+)
+from app.modules.partners.models import PartnerProfile
+from app.modules.products.models import Product
+from app.modules.users.models import User
+
+router = APIRouter()
+
+VALID_STATUSES = {"draft", "active", "paused", "closing", "archived"}
+VALID_ACCESS = {"open", "approval", "invite_only"}
+
+
+class CreateOfferRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    image_url: str | None = None
+    category: str | None = None
+    geo: str | None = None
+    product_name: str | None = None
+    product_url: str | None = None
+    conversion_type: str = "sale"
+    attribution_window_days: int = 30
+    commission_type: str = "percent"
+    commission_value: float = 10.0
+    commission_currency: str | None = None
+    visibility: str = "public"
+    access_policy: str = "open"
+    allowed_traffic: list[str] | None = None
+    forbidden_traffic: list[str] | None = None
+    partner_notes: str | None = None
+    materials: list[dict] | None = None
+    status: str = "draft"
+
+
+class UpdateOfferRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    image_url: str | None = None
+    category: str | None = None
+    geo: str | None = None
+    product_url: str | None = None
+    status: str | None = None
+    visibility: str | None = None
+    access_policy: str | None = None
+    conversion_type: str | None = None
+    attribution_window_days: int | None = None
+    commission_type: str | None = None
+    commission_value: float | None = None
+    commission_currency: str | None = None
+    allowed_traffic: list[str] | None = None
+    forbidden_traffic: list[str] | None = None
+    partner_notes: str | None = None
+    materials: list[dict] | None = None
+
+
+class InvitePartnerRequest(BaseModel):
+    email: str | None = None
+    partner_id: int | None = None
+
+
+async def _get_business_offer(db: AsyncSession, offer_id: str, business_id: int) -> Offer:
+    offer = (
+        await db.execute(
+            select(Offer).where(Offer.id == parse_id(offer_id), Offer.business_id == business_id)
+        )
+    ).scalar_one_or_none()
+    if not offer:
+        raise NotFoundError("Offer")
+    return offer
+
+
+@router.get("")
+async def list_offers(
+    status: str | None = None,
+    access_policy: str | None = None,
+    category: str | None = None,
+    q: str | None = None,
+    page: int = Query(default=1, ge=1),
+    per_page: int = Query(default=20, ge=1, le=100),
+    session_data: dict = Depends(require_business_role),
+    db: AsyncSession = Depends(get_db),
+):
+    business_id = parse_id(session_data["active_business_id"])
+    filters = [Offer.business_id == business_id]
+    if status:
+        filters.append(Offer.status == status)
+    if access_policy:
+        filters.append(Offer.access_policy == access_policy)
+    if category:
+        filters.append(Offer.category == category)
+    if q:
+        filters.append(Offer.name.ilike(f"%{q.strip()}%"))
+
+    query = select(Offer).where(*filters).order_by(Offer.created_at.desc())
+    total = await db.scalar(select(func.count(Offer.id)).where(*filters))
+    offers = (await db.execute(query.offset((page - 1) * per_page).limit(per_page))).scalars().all()
+
+    items = []
+    for offer in offers:
+        partners_count = await db.scalar(
+            select(func.count(OfferPartnerAccess.id)).where(
+                OfferPartnerAccess.offer_id == offer.id,
+                OfferPartnerAccess.status == "approved",
+            )
+        )
+        stats = await offer_stats(db, offer.id)
+        items.append(
+            {
+                **offer_public_fields(offer),
+                "partners_count": partners_count or 0,
+                "clicks": stats["clicks"],
+                "conversions": stats["conversions"],
+                "cr": stats["cr"],
+            }
+        )
+
+    return {"items": items, "total": total or 0, "page": page, "per_page": per_page}
+
+
+@router.post("")
+async def create_offer(
+    data: CreateOfferRequest,
+    session_data: dict = Depends(require_business_role),
+    db: AsyncSession = Depends(get_db),
+):
+    business_id = parse_id(session_data["active_business_id"])
+    if data.status not in VALID_STATUSES:
+        raise ForbiddenError("Invalid offer status")
+    if data.access_policy not in VALID_ACCESS:
+        raise ForbiddenError("Invalid access policy")
+
+    product = Product(
+        business_id=business_id,
+        name=data.product_name or data.name,
+        url=data.product_url,
+        description=data.description,
+        status="active",
+    )
+    db.add(product)
+    await db.flush()
+
+    offer = Offer(
+        business_id=business_id,
+        product_id=product.id,
+        name=data.name,
+        description=data.description,
+        image_url=data.image_url,
+        category=data.category,
+        geo=data.geo,
+        status=data.status,
+        visibility=data.visibility,
+        access_policy=data.access_policy,
+        conversion_type=data.conversion_type,
+        attribution_window_days=data.attribution_window_days,
+        currency=data.commission_currency or "RUB",
+        allowed_traffic=data.allowed_traffic or [],
+        forbidden_traffic=data.forbidden_traffic or [],
+        partner_notes=data.partner_notes,
+        materials=data.materials or [],
+    )
+    db.add(offer)
+    await db.flush()
+
+    db.add(
+        OfferCommissionRule(
+            offer_id=offer.id,
+            type=data.commission_type,
+            value=data.commission_value,
+            currency=data.commission_currency,
+        )
+    )
+    await db.flush()
+    await db.refresh(offer)
+    return offer_public_fields(offer)
+
+
+@router.get("/{offer_id}")
+async def get_offer(
+    offer_id: str,
+    session_data: dict = Depends(require_business_role),
+    db: AsyncSession = Depends(get_db),
+):
+    business_id = parse_id(session_data["active_business_id"])
+    offer = await _get_business_offer(db, offer_id, business_id)
+    stats = await offer_stats(db, offer.id)
+    series = await offer_timeseries(db, offer.id)
+    approved_conversions = int(
+        await db.scalar(
+            select(func.count(Conversion.id)).where(
+                Conversion.offer_id == offer.id,
+                Conversion.status.in_(["approved", "paid"]),
+            )
+        )
+        or 0
+    )
+
+    access_rows = (
+        await db.execute(partner_access_query().where(OfferPartnerAccess.offer_id == offer.id))
+    ).all()
+
+    partners = []
+    pending = []
+    top = []
+    for access, profile, user in access_rows:
+        partner_stats = await offer_stats(db, offer.id, partner_id=profile.id)
+        item = {
+            "id": access.id,
+            "partner_id": profile.id,
+            "name": profile.display_name or user.email,
+            "email": user.email,
+            "status": access.status,
+            "source": access.source,
+            "comment": access.comment,
+            "traffic_sources": access.traffic_sources or [],
+            "topics": access.topics,
+            "geo": access.geo,
+            "created_at": access.created_at.isoformat() if access.created_at else None,
+            **partner_stats,
+        }
+        partners.append(item)
+        if access.status == "pending":
+            pending.append(item)
+        if access.status == "approved":
+            top.append(item)
+    top.sort(key=lambda row: row["conversions"], reverse=True)
+
+    links_count = int(
+        await db.scalar(
+            select(func.count(TrackingLink.id)).where(
+                TrackingLink.offer_id == offer.id,
+                TrackingLink.status == "ACTIVE",
+            )
+        )
+        or 0
+    )
+    promotion_rows = (
+        await db.execute(
+            select(TrackingLink, PartnerProfile)
+            .join(PartnerProfile, TrackingLink.partner_id == PartnerProfile.id)
+            .where(TrackingLink.offer_id == offer.id)
+            .order_by(TrackingLink.created_at.desc())
+        )
+    ).all()
+    stats_by_link = await offer_link_stats(db, offer.id)
+    promotion_links = []
+    for link, profile in promotion_rows:
+        link_stats = stats_by_link.get(link.id, {"clicks": 0, "conversions": 0})
+        promotion_links.append(
+            {
+                "id": link.id,
+                "name": link.name or profile.display_name,
+                "url": f"https://go.refiq.ru/{link.short_code}",
+                "short_code": link.short_code,
+                "destination_url": link.destination_url,
+                "partner_name": profile.display_name,
+                "traffic_source": link.traffic_source,
+                "status": link.status,
+                "clicks": link_stats["clicks"],
+                "conversions": link_stats["conversions"],
+            }
+        )
+
+    product = None
+    if offer.product_id:
+        product = (
+            await db.execute(select(Product).where(Product.id == offer.product_id))
+        ).scalar_one_or_none()
+
+    warnings = []
+    if offer.status == "paused":
+        warnings.append("Оффер приостановлен: новый трафик и подключения остановлены.")
+    if offer.status == "closing":
+        warnings.append("Оффер закрывается. Новые партнёры не подключаются.")
+    if offer.status == "archived":
+        warnings.append("Оффер в архиве и скрыт из каталога.")
+    if pending:
+        warnings.append(f"Есть заявки партнёров, ожидающие решения: {len(pending)}.")
+
+    return {
+        **offer_public_fields(offer),
+        "product_url": product.url if product else None,
+        "kpis": {**stats, "approved_conversions": approved_conversions},
+        "timeseries": series,
+        "partners": partners,
+        "pending_applications": pending,
+        "top_partners": top[:5],
+        "active_partners": sum(1 for row in partners if row["status"] == "approved"),
+        "active_links": links_count,
+        "promotion_links": promotion_links,
+        "warnings": warnings,
+    }
+
+
+@router.patch("/{offer_id}")
+async def update_offer(
+    offer_id: str,
+    data: UpdateOfferRequest,
+    session_data: dict = Depends(require_business_role),
+    db: AsyncSession = Depends(get_db),
+):
+    business_id = parse_id(session_data["active_business_id"])
+    offer = await _get_business_offer(db, offer_id, business_id)
+    payload = data.model_dump(exclude_unset=True)
+
+    if payload.get("status") and payload["status"] not in VALID_STATUSES:
+        raise ForbiddenError("Invalid offer status")
+    if payload.get("access_policy") and payload["access_policy"] not in VALID_ACCESS:
+        raise ForbiddenError("Invalid access policy")
+
+    product_url = payload.pop("product_url", None)
+    commission_type = payload.pop("commission_type", None)
+    commission_value = payload.pop("commission_value", None)
+    commission_currency = payload.pop("commission_currency", None)
+
+    for key, value in payload.items():
+        setattr(offer, key, value)
+
+    await apply_commission_update(db, offer, commission_type, commission_value, commission_currency)
+
+    if product_url is not None and offer.product_id:
+        product = (
+            await db.execute(select(Product).where(Product.id == offer.product_id))
+        ).scalar_one_or_none()
+        if product:
+            product.url = product_url
+
+    return {"status": "ok"}
+
+
+@router.post("/{offer_id}/partners/{access_id}/approve")
+async def approve_partner(
+    offer_id: str,
+    access_id: str,
+    session_data: dict = Depends(require_business_role),
+    db: AsyncSession = Depends(get_db),
+):
+    business_id = parse_id(session_data["active_business_id"])
+    offer = await _get_business_offer(db, offer_id, business_id)
+    access = (
+        await db.execute(
+            select(OfferPartnerAccess).where(
+                OfferPartnerAccess.id == parse_id(access_id),
+                OfferPartnerAccess.offer_id == offer.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not access:
+        raise NotFoundError("Application")
+    access.status = "approved"
+    access.approved_at = datetime.now(timezone.utc)
+    await ensure_business_partner(db, offer.business_id, access.partner_id, "active")
+    return {"status": "approved"}
+
+
+@router.post("/{offer_id}/partners/{access_id}/reject")
+async def reject_partner(
+    offer_id: str,
+    access_id: str,
+    session_data: dict = Depends(require_business_role),
+    db: AsyncSession = Depends(get_db),
+):
+    business_id = parse_id(session_data["active_business_id"])
+    offer = await _get_business_offer(db, offer_id, business_id)
+    access = (
+        await db.execute(
+            select(OfferPartnerAccess).where(
+                OfferPartnerAccess.id == parse_id(access_id),
+                OfferPartnerAccess.offer_id == offer.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not access:
+        raise NotFoundError("Application")
+    access.status = "rejected"
+    return {"status": "rejected"}
+
+
+@router.post("/{offer_id}/invite")
+async def invite_partner(
+    offer_id: str,
+    data: InvitePartnerRequest,
+    session_data: dict = Depends(require_business_role),
+    db: AsyncSession = Depends(get_db),
+):
+    business_id = parse_id(session_data["active_business_id"])
+    offer = await _get_business_offer(db, offer_id, business_id)
+    if offer.status in {"archived", "draft"}:
+        raise ForbiddenError("Cannot invite partners to this offer")
+
+    profile = None
+    if data.partner_id:
+        profile = (
+            await db.execute(select(PartnerProfile).where(PartnerProfile.id == data.partner_id))
+        ).scalar_one_or_none()
+    elif data.email:
+        profile = (
+            await db.execute(
+                select(PartnerProfile)
+                .join(User, PartnerProfile.user_id == User.id)
+                .where(func.lower(User.email) == data.email.strip().lower())
+            )
+        ).scalar_one_or_none()
+    if not profile:
+        raise NotFoundError("Partner")
+
+    existing = (
+        await db.execute(
+            select(OfferPartnerAccess).where(
+                OfferPartnerAccess.offer_id == offer.id,
+                OfferPartnerAccess.partner_id == profile.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing:
+        existing.status = "approved"
+        existing.source = "invitation"
+        existing.approved_at = datetime.now(timezone.utc)
+    else:
+        db.add(
+            OfferPartnerAccess(
+                offer_id=offer.id,
+                partner_id=profile.id,
+                status="approved",
+                source="invitation",
+                approved_at=datetime.now(timezone.utc),
+            )
+        )
+    await ensure_business_partner(db, offer.business_id, profile.id, "active")
+    return {"status": "invited"}

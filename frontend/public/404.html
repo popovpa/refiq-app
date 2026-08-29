@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Страница не найдена — RefIQ</title>
+    <meta name="description" content="Запрашиваемая страница не найдена. Вернитесь на главную RefIQ." />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="#f4f6f9" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --background: hsl(220 20% 97%);
+        --foreground: hsl(222 32% 14%);
+        --muted: hsl(220 10% 46%);
+        --card: hsl(0 0% 100%);
+        --border: hsl(220 16% 90%);
+        --primary: hsl(174 72% 40%);
+        --primary-hover: hsl(174 72% 36%);
+        --ring: hsl(174 72% 40% / 0.3);
+      }
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        font-family: Inter, "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+        background: var(--background);
+        color: var(--foreground);
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .page {
+        min-height: 100svh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .glow {
+        position: absolute;
+        inset: 0;
+        background:
+          radial-gradient(circle at top right, hsla(174, 72%, 40%, 0.1), transparent 42%),
+          radial-gradient(circle at bottom left, hsla(248, 78%, 62%, 0.1), transparent 42%);
+        pointer-events: none;
+      }
+
+      .wrap {
+        position: relative;
+        width: 100%;
+        max-width: 28rem;
+      }
+
+      .brand {
+        text-align: center;
+        margin-bottom: 1.75rem;
+      }
+
+      .logos {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.625rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .logo-mark {
+        height: 36px;
+        width: auto;
+        max-width: 40px;
+        object-fit: contain;
+        object-position: center;
+        user-select: none;
+      }
+
+      .logo-label {
+        height: 20px;
+        width: auto;
+        max-width: 140px;
+        object-fit: contain;
+        object-position: left;
+        user-select: none;
+      }
+
+      .tagline {
+        margin: 0;
+        font-size: 0.875rem;
+        line-height: 1.25rem;
+        color: var(--muted);
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid hsl(220 16% 90% / 0.8);
+        border-radius: 16px;
+        box-shadow: 0 8px 24px rgba(16, 24, 40, 0.06);
+        padding: 2rem;
+        text-align: center;
+      }
+
+      .eyebrow {
+        margin: 0 0 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--primary);
+      }
+
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 1.5rem;
+        line-height: 2rem;
+        font-weight: 600;
+        letter-spacing: -0.025em;
+      }
+
+      .lead {
+        margin: 0 0 1.5rem;
+        font-size: 0.875rem;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 2.75rem;
+        padding: 0 1.25rem;
+        border-radius: 10px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 0.875rem;
+        font-weight: 500;
+        text-decoration: none;
+        box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+        transition: background 0.15s ease;
+      }
+
+      .btn:hover {
+        background: var(--primary-hover);
+      }
+
+      .btn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--ring);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <div class="glow" aria-hidden="true"></div>
+      <div class="wrap">
+        <div class="brand">
+          <div class="logos">
+            <img class="logo-mark" src="/brand/logo.png" alt="" draggable="false" />
+            <img class="logo-label" src="/brand/label.png" alt="RefIQ" draggable="false" />
+          </div>
+          <p class="tagline">Платформа партнёрских продаж</p>
+        </div>
+        <div class="card">
+          <p class="eyebrow">Ошибка 404</p>
+          <h1>Такой страницы нет</h1>
+          <p class="lead">
+            Адрес не существует или страница была перемещена. Вернитесь на главную, чтобы продолжить работу в RefIQ.
+          </p>
+          <a class="btn" href="/">На главную</a>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

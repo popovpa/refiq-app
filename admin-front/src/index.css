@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: theme('colors.border');
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  }
+
+  #root {
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  .ui-card {
+    @apply bg-card rounded-xl border border-border/80 shadow-card;
+  }
+
+  .ui-page-title {
+    @apply text-[22px] font-semibold tracking-tight text-foreground;
+  }
+
+  .ui-section-title {
+    @apply text-[15px] font-semibold text-foreground;
+  }
+
+  .ui-table {
+    @apply w-full text-sm;
+  }
+
+  .ui-table thead th {
+    @apply text-left px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground bg-card sticky top-0;
+  }
+
+  .ui-table tbody td {
+    @apply px-3 py-2 border-t border-border/70;
+  }
+
+  .ui-table tbody tr {
+    @apply transition-colors hover:bg-muted/40;
+  }
+
+  .ui-input {
+    @apply w-full h-10 px-3 rounded-md border bg-card text-sm
+      placeholder:text-muted-foreground/70
+      focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40;
+  }
+
+  .ui-label {
+    @apply block text-sm font-medium mb-1.5 text-foreground;
+  }
+
+  .ui-badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+}
