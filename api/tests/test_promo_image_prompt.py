@@ -54,9 +54,13 @@ def test_image_spec_prompt_has_no_character_cap():
     assert "no character cap" in text
     assert "HARD LIMIT" not in text
     assert "Alice AI ART" not in text
+    assert "PRODUCT_CONTEXT.description" in text
+    assert "NO CTA buttons" in text
+    assert "headline and CTA only" not in text
     compact = image_spec_system_prompt(compact=True)
     assert "REWRITE" in compact
     assert "character cap" in compact
+    assert "CTA button" in compact
 
 
 @pytest.mark.asyncio
@@ -93,7 +97,8 @@ async def test_long_image_spec_is_accepted_without_truncation(monkeypatch):
         run_id=1,
         item_id=64,
     )
-    assert spec["imagePrompt"] == _LONG_SPEC["imagePrompt"].strip()
+    assert _LONG_SPEC["imagePrompt"].strip() in spec["imagePrompt"]
+    assert "Description: Премиальный кроссовер" in spec["imagePrompt"]
     assert len(spec["imagePrompt"]) > 500
     assert "EXEED RX" in spec["imagePrompt"]
     assert "комисс" not in spec["imagePrompt"].lower()

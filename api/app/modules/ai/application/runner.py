@@ -134,6 +134,19 @@ async def run_image(
         )
         await usage_db.commit()
 
+        logger.info(
+            "ai_image_prompt",
+            generation_id=generation_id,
+            operation=operation.value,
+            provider=provider_name,
+            model=model_name,
+            aspect_ratio=aspect_ratio,
+            image_format=image_format,
+            prompt_version=prompt_version,
+            entity_id=entity_id,
+            prompt=prompt,
+        )
+
         try:
             provider = get_provider_resolver().image(Capability.IMAGE_GENERATION)
             result = await provider.generate(

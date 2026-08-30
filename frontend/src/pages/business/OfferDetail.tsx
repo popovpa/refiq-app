@@ -346,7 +346,9 @@ export function BusinessOfferDetail() {
         </div>
       )}
 
-      {tab === 'materials' && id && <OfferCreativesTab offerId={id} variant="full" />}
+      {tab === 'materials' && id && (
+        <OfferCreativesTab offerId={id} variant="full" onCreateTrackingLink={() => setTab('promotion')} />
+      )}
 
       {selectedLink && id && (
         <BusinessLinkDetailDrawer

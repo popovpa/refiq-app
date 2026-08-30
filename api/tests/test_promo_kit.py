@@ -1,5 +1,8 @@
+from io import BytesIO
+
 import pytest
 from httpx import ASGITransport, AsyncClient
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,6 +101,46 @@ SINGLE_TEXT = {
     "items": [],
 }
 
+META = {
+    "primaryTexts": [
+        "CRM для команды, которой нужен порядок в сделках.",
+        "Ведите воронку без таблиц и хаоса.",
+        "Кабинет сделок и аналитики в одном месте.",
+    ],
+    "headlines": [
+        "CRM для продаж",
+        "Сделки без таблиц",
+        "Аналитика под контролем",
+        "Кабинет сделок",
+        "CRM без хаоса",
+    ],
+    "descriptions": [
+        "Кабинет сделок и отчётов.",
+        "Учёт сделок без лишних таблиц.",
+        "Инструмент для отдела продаж.",
+    ],
+}
+
+GOOGLE = {
+    "headlines": ["CRM для продаж", "Сделки без таблиц", "Аналитика", "Кабинет сделок", "CRM без хаоса"],
+    "descriptions": [
+        "Кабинет сделок и отчётов для команды.",
+        "Учёт сделок без лишних таблиц.",
+        "Запустите учёт за один день.",
+        "Понятный интерфейс для продаж.",
+    ],
+}
+
+TIKTOK = {
+    "hooks": ["Сделки без таблиц", "Воронка в одном кабинете", "CRM без хаоса"],
+    "captions": [
+        "Ведите сделки и аналитику в одном месте.",
+        "Кабинет для команды продаж без лишнего шума.",
+        "Запустите учёт за один день.",
+    ],
+    "ctas": ["Узнать больше", "Открыть кабинет", "Попробовать"],
+}
+
 YANDEX = {
     "headlines": [
         "CRM для продаж",
@@ -184,15 +227,34 @@ IMAGE_SPEC = {
 
 def _queue_kit(ai_fake: FakeTextGenerationProvider) -> None:
     ai_fake.queue_structured(BRIEF)
-    ai_fake.queue_structured(_copy(KIT_TEXTS["universal_ad"]))
-    ai_fake.queue_structured(_copy(KIT_TEXTS["short_ad"]))
-    ai_fake.queue_structured(_lines(KIT_TEXTS["headlines"]))
-    ai_fake.queue_structured(_lines(KIT_TEXTS["descriptions"]))
     ai_fake.queue_structured({"posts": KIT_TEXTS["telegram_posts"]})
-    ai_fake.queue_structured({"posts": KIT_TEXTS["vk_posts"]})
+    ai_fake.queue_structured(META)
+    ai_fake.queue_structured(GOOGLE)
     ai_fake.queue_structured(YANDEX)
+    ai_fake.queue_structured({"posts": KIT_TEXTS["vk_posts"]})
+    ai_fake.queue_structured(TIKTOK)
     ai_fake.queue_structured(IMAGE_SPEC)
     ai_fake.queue_structured(IMAGE_SPEC)
+
+
+def _promo_png(size: int = 256) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (size, size), (24, 86, 168)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+async def _offer_link(client: AsyncClient, offer_id: str, name: str = "QR") -> dict:
+    await become_partner(client, f"{name} Partner")
+    await client.post("/api/v1/me/context", json={"role": "partner"})
+    join = await client.post(f"/api/v1/partner/offers/{offer_id}/join")
+    assert join.status_code == 200, join.text
+    created = await client.post(
+        "/api/v1/partner/links",
+        json={"offer_id": int(offer_id), "name": name, "traffic_source": "telegram"},
+    )
+    assert created.status_code == 200, created.text
+    await client.post("/api/v1/me/context", json={"role": "business"})
+    return created.json()
 
 
 @pytest.mark.asyncio
@@ -226,14 +288,14 @@ async def test_promo_kit_creates_drafts_and_usage(
     assert done.status_code == 200, done.text
     result = done.json()
     assert result["status"] == "completed"
-    assert result["total_items"] == 8
-    assert len(result["created_ids"]) == 9
+    assert result["total_items"] == 7
+    assert len(result["created_ids"]) == 8
     assert result["errors"] == []
     assert all(item["status"] == "completed" for item in result["items"])
 
     listed = await client.get(f"/api/v1/business/offers/{offer_id}/creatives")
     items = listed.json()["items"]
-    assert len(items) == 9
+    assert len(items) == 8
     assert all(item["status"] == CreativeStatus.DRAFT.value for item in items)
     assert all(item["source"] == CreativeSource.AI.value for item in items)
     assert {item["type"] for item in items} == {
@@ -241,10 +303,12 @@ async def test_promo_kit_creates_drafts_and_usage(
         CreativeType.SOCIAL_POST.value,
         CreativeType.BANNER.value,
     }
-    assert any(item["channel"] == CreativeChannel.GENERAL.value for item in items)
     assert any(item["channel"] == CreativeChannel.TELEGRAM.value for item in items)
     assert any(item["channel"] == CreativeChannel.VK.value for item in items)
     assert any(item["channel"] == CreativeChannel.YANDEX_DIRECT.value for item in items)
+    assert any(item["channel"] == CreativeChannel.META_ADS.value for item in items)
+    assert any(item["channel"] == CreativeChannel.GOOGLE_ADS.value for item in items)
+    assert any(item["channel"] == CreativeChannel.TIKTOK_ADS.value for item in items)
     yandex = next(item for item in items if item["channel"] == CreativeChannel.YANDEX_DIRECT.value)
     assert len(yandex["items"]) == 5
     assert len(yandex["descriptions"]) == 5
@@ -301,7 +365,8 @@ async def test_promo_kit_creates_drafts_and_usage(
     for prompt in image_prompts:
         lower = prompt.lower()
         assert "crm pro" in lower
-        assert prompt == IMAGE_SPEC["imagePrompt"]
+        assert IMAGE_SPEC["imagePrompt"] in prompt
+        assert "Description:" in prompt
         assert "комиссия" not in lower
         assert "партнёрская программа" not in lower
         assert "allowed_traffic" not in lower
@@ -399,7 +464,7 @@ async def test_regenerate_updates_only_one_material(
     assert regenerated.json()["headline"] == SINGLE_TEXT["headline"]
 
     listed = await client.get(f"/api/v1/business/offers/{offer_id}/creatives")
-    assert len(listed.json()["items"]) == 9
+    assert len(listed.json()["items"]) == 8
 
     ai_fake.queue_structured(BRIEF)
     ai_fake.queue_structured(IMAGE_SPEC)
@@ -444,7 +509,7 @@ async def test_partial_kit_keeps_successful_materials(
     await register_business(client, "promo-partial@example.com")
     offer_id = await _offer(client)
     ai_fake.queue_structured(BRIEF)
-    for _ in range(7):
+    for _ in range(6):
         ai_fake.queue_structured({"unexpected": True})
     ai_fake.queue_structured(IMAGE_SPEC)
     ai_fake.queue_structured(IMAGE_SPEC)
@@ -457,7 +522,7 @@ async def test_partial_kit_keeps_successful_materials(
     body = done.json()
     assert body["status"] == "completed_with_errors"
     assert body["created_ids"]
-    assert body["failed_items"] == 7
+    assert body["failed_items"] == 6
     assert body["completed_items"] == 1
 
     listed = await client.get(f"/api/v1/business/offers/{offer_id}/creatives")
@@ -495,17 +560,35 @@ async def test_selectable_slots_skip_vk_add_qr(
     catalog = await client.get(f"/api/v1/business/offers/{offer_id}/promo-generation-catalog")
     assert catalog.status_code == 200
     ids = {item["id"] for item in catalog.json()["items"]}
-    assert "yandex_direct" in ids
-    assert "images_qr" in ids
+    assert ids == {
+        "telegram",
+        "meta_ads",
+        "google_ads",
+        "yandex_direct",
+        "vk_ads",
+        "tiktok_ads",
+        "images_1_1",
+        "images_16_9",
+        "images_9_16",
+        "images_qr",
+    }
+    assert "universal_ad" not in ids
+    labels = {item["id"]: item["label"] for item in catalog.json()["items"]}
+    assert labels["meta_ads"] == "Meta Ads (Facebook)"
+    assert labels["vk_ads"] == "VK Реклама"
 
+    link = await _offer_link(client, offer_id)
     ai_fake.queue_structured(BRIEF)
-    ai_fake.queue_structured(_copy(KIT_TEXTS["universal_ad"]))
+    ai_fake.queue_structured({"posts": KIT_TEXTS["telegram_posts"]})
     ai_fake.queue_structured(YANDEX)
     ai_fake.queue_structured(IMAGE_SPEC)
 
     started = await client.post(
         f"/api/v1/business/offers/{offer_id}/creatives/promo-kit",
-        json={"slots": ["universal_ad", "yandex_direct", "images_qr"]},
+        json={
+            "slots": ["telegram", "yandex_direct", "images_qr"],
+            "qr_tracking_link_id": link["id"],
+        },
     )
     assert started.status_code == 202, started.text
     await job_runner.run_all()
@@ -515,7 +598,7 @@ async def test_selectable_slots_skip_vk_add_qr(
     body = done.json()
     assert body["status"] == "completed"
     assert [item["material_type"] for item in body["items"]] == [
-        "universal_ad",
+        "telegram",
         "yandex_direct",
         "images_qr",
     ]
@@ -524,6 +607,28 @@ async def test_selectable_slots_skip_vk_add_qr(
     assert any(item["channel"] == "yandex_direct" for item in listed)
     qr = next(item for item in listed if item["selected_variant"] == "images_qr")
     assert qr["format"] == "square_1_1"
+
+
+@pytest.mark.asyncio
+async def test_qr_slot_requires_tracking_link(
+    client: AsyncClient,
+    ai_fake: FakeTextGenerationProvider,
+):
+    await register_business(client, "promo-qr-required@example.com")
+    offer_id = await _offer(client)
+    missing = await client.post(
+        f"/api/v1/business/offers/{offer_id}/creatives/promo-kit",
+        json={"slots": ["images_qr"]},
+    )
+    assert missing.status_code == 400
+    assert missing.json()["error"]["code"] == "PROMO_QR_LINK_REQUIRED"
+    foreign = await client.post(
+        f"/api/v1/business/offers/{offer_id}/creatives/promo-kit",
+        json={"slots": ["images_qr"], "qr_tracking_link_id": 999999},
+    )
+    assert foreign.status_code == 400
+    assert foreign.json()["error"]["code"] == "PROMO_QR_LINK_INVALID"
+    assert ai_fake.calls == []
 
 
 @pytest.mark.asyncio
@@ -669,7 +774,8 @@ async def test_cancel_then_start_new_kit(
     )
     assert cancelled.status_code == 200, cancelled.text
     await job_runner.run_all()
-    _queue_kit(ai_fake)
+    ai_fake.queue_structured(BRIEF)
+    ai_fake.queue_structured(_copy(KIT_TEXTS["short_ad"]))
     restarted = await client.post(
         f"/api/v1/business/offers/{offer_id}/creatives/promo-kit",
         json={"slots": ["short_ad"]},
@@ -829,9 +935,11 @@ async def test_partner_qr_image_uses_tracking_link(
     offer_id = await _offer(client)
     ai_fake.queue_structured(BRIEF)
     ai_fake.queue_structured(IMAGE_SPEC)
+    get_fake_image_provider().queue_image(_promo_png())
+    link = await _offer_link(client, offer_id)
     started = await client.post(
         f"/api/v1/business/offers/{offer_id}/creatives/promo-kit",
-        json={"slots": ["images_qr"]},
+        json={"slots": ["images_qr"], "qr_tracking_link_id": link["id"]},
     )
     await job_runner.run_all()
     listed = (await client.get(f"/api/v1/business/offers/{offer_id}/creatives")).json()["items"]
@@ -843,15 +951,12 @@ async def test_partner_qr_image_uses_tracking_link(
     assert business_file.status_code == 200
     base_bytes = business_file.content
 
-    await become_partner(client, "QR Partner")
     await client.post("/api/v1/me/context", json={"role": "partner"})
-    join = await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    assert join.status_code == 200, join.text
-    link = await client.post(
+    second = await client.post(
         "/api/v1/partner/links",
-        json={"offer_id": int(offer_id), "name": "QR", "traffic_source": "telegram"},
+        json={"offer_id": int(offer_id), "name": "QR-2", "traffic_source": "telegram"},
     )
-    assert link.status_code == 200, link.text
+    assert second.status_code == 200, second.text
     partner_file = await client.get(
         f"/api/v1/partner/offers/{offer_id}/promo-materials/{qr['id']}/image"
     )

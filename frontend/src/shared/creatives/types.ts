@@ -23,6 +23,10 @@ export interface Creative {
   hashtags: string[];
   items?: string[];
   descriptions?: string[];
+  primary_texts?: string[];
+  hooks?: string[];
+  captions?: string[];
+  ctas?: string[];
   variants?: CreativeTextVariant[];
   asset_id: number | null;
   asset?: { url?: string | null; mime_type?: string; width?: number; height?: number } | null;

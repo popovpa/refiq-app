@@ -3,8 +3,8 @@ from app.modules.ai.application.creative.promo_copy_guard import looks_like_affi
 BRIEF_V1 = "promo-brief-v3"
 KIT_TEXT_V1 = "promo-kit-text-v3"
 SINGLE_TEXT_V1 = "promo-single-text-v3"
-IMAGE_V1 = "promo-image-v3"
-IMAGE_SPEC_V1 = "promo-image-spec-v1"
+IMAGE_V1 = "promo-image-v4"
+IMAGE_SPEC_V1 = "promo-image-spec-v2"
 
 _CUSTOMER_ACQUISITION = """
 PURPOSE is CUSTOMER_ACQUISITION.
@@ -200,22 +200,29 @@ def image_spec_system_prompt(*, qr_safe: bool = False, compact: bool = False) ->
     if qr_safe:
         qr = """
 Leave a quiet empty rectangle in the bottom-right 22% of the canvas for a QR that software will add later.
-Do not describe a QR code, barcode, URL, or tracking mark in the image.
+Do not describe a QR code, barcode, URL, button, or tracking mark in the image.
 """
     rewrite = ""
     if compact:
         rewrite = """
 REWRITE the previous imagePrompt. Remove any affiliate, commission, payout, or partner-program language.
-Keep the product name, main subject, style, headline and CTA quotes. Do not shorten for a character cap.
+Remove every CTA button, UI button, link, URL, and action label from the scene.
+Keep the product name as the main subject and the visual style from the offer description. Do not shorten for a character cap.
 """
     return f"""{_SHARED}
 Prompt version: {IMAGE_SPEC_V1}
 Write a complete visual specification for a customer-facing product advertisement.
 The image model will render ONLY imagePrompt. It must not receive Offer, commission, or affiliate rules.
+Ground the scene in the offer description field (`description` / PRODUCT_CONTEXT.description).
+Include that description as facts about the promoted product/service.
 imagePrompt must:
 - advertise the PRODUCT/SERVICE to an end customer;
-- name the real product as the main subject;
-- include exact visible text instructions for headline and CTA only;
+- depict what the offer description says the product or service is;
+- name the real product as the main visual subject;
+- be a photographic or illustrated product scene, not a landing-page mockup;
+- contain NO CTA buttons, UI buttons, app-store badges, forms, phone/email chips, or clickable-looking controls;
+- contain NO URLs, short links, QR codes, barcodes, or other action links;
+- allow at most the product name as simple typography, never as a button or hyperlink;
 - be a full visual prompt with no character cap;
 - never mention commission, payout, CPA/CPS, partner program, webmaster, traffic rules, or RefIQ.
 Do not invent prices, discounts, medical or financial claims, or addresses.
@@ -244,18 +251,18 @@ def image_prompt(
         extra = ""
     extra = extra or (brief.get("mainValueProposition") or product.get("name") or "")
     visual = brief.get("visualDirection") or extra
-    cta = brief.get("cta") or "Узнать подробнее"
+    description = (product.get("description") or "").strip()
     limited = "yes" if product.get("contextLimited") else "no"
     forbidden = context.get("restrictions") or []
     restriction_lines = "\n".join(f"- {item}" for item in forbidden) or "- (none beyond the strict rules below)"
     qr_block = ""
     if qr_safe:
-        qr_block = f"""
+        qr_block = """
 QR LAYOUT:
 Leave a quiet empty rectangle in the bottom-right 22% of the canvas for a QR code that software will add later.
-Do not draw any QR code, barcode, URL, tracking code, or fake scannable pattern.
-Keep the main subject, headline, CTA, and important text out of that bottom-right zone.
-Visible CTA must be customer-facing ({cta}). Never write «QR партнёра», «Партнёрская ссылка», or commission copy.
+Do not draw any QR code, barcode, URL, tracking code, button, or fake scannable pattern.
+Keep the main subject out of that bottom-right zone.
+Never write «QR партнёра», «Партнёрская ссылка», or commission copy.
 """
     return f"""PURPOSE:
 Customer acquisition.
@@ -265,10 +272,9 @@ End customers interested in the promoted product/service.
 
 PRODUCT:
 Name: {product.get("name") or ""}
-Description: {(product.get("description") or "")[:400]}
+Description: {description}
 Category: {product.get("category") or ""}
 GEO: {product.get("geo") or ""}
-Customer action: {product.get("customerAction") or "enquiry"}
 Context limited: {limited}
 
 CUSTOMER VALUE:
@@ -282,10 +288,8 @@ VISUAL DIRECTION:
 {visual}
 Brand colors: {colors}
 Creative concept: {extra}
-The main visual subject must be the promoted product/service.
-
-CTA:
-{cta}
+The main visual subject must be the promoted product/service described above.
+Build the scene from the product description, not from a marketing CTA.
 
 RESTRICTIONS:
 {restriction_lines}
@@ -296,12 +300,14 @@ STRICT RULES:
 - Never mention partner commission, payout, CPA/CPS, or earning opportunities.
 - Never show traffic-source or payout rules.
 - Never invent facts.
-- All visible text must be customer-facing.
 - The product/service must be the primary subject of the creative.
 - Do not depict fake reviews, guaranteed results, prices, or discounts unless they appear in VERIFIED FACTS.
-- No watermarks. No QR codes. No URLs. No tracking codes. No rqcid.
+- No CTA buttons, UI buttons, app-store badges, forms, or clickable-looking controls.
+- No action links, URLs, short links, phone/email chips, or “learn more / buy / sign up” labels on the image.
+- Visible text, if any, may be only the product name as plain typography — never a button.
+- No watermarks. No QR codes. No tracking codes. No rqcid.
 Prompt version: {IMAGE_V1}
-Create a {aspect} promotional image for this product/service.
+Create a {aspect} promotional image of this product/service.
 {qr_block}
 """
 

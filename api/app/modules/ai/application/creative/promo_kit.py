@@ -308,6 +308,22 @@ def _validated_image_prompt(prompt: str, *, product_context: dict | None) -> str
     return text
 
 
+def _offer_description(context: dict | None) -> str:
+    payload = context or {}
+    product = payload.get("productContext") or {}
+    offer = payload.get("offer") or {}
+    return str(product.get("description") or offer.get("description") or "").strip()
+
+
+def _with_offer_description(prompt: str, context: dict | None) -> str:
+    description = _offer_description(context)
+    if not description:
+        return prompt
+    if description in prompt:
+        return prompt
+    return normalize_image_prompt(f"{prompt}\n\nDescription: {description}")
+
+
 async def generate_image_specification(
     *,
     offer_id: int,
@@ -320,17 +336,30 @@ async def generate_image_specification(
     run_id: int,
     item_id: int,
 ) -> dict:
+    product = context.get("productContext") or {}
+    offer_description = _offer_description(context)
     payload = {
-        "productContext": context.get("productContext") or {},
+        "description": offer_description,
+        "productContext": {
+            "name": product.get("name") or "",
+            "description": offer_description or (product.get("description") or ""),
+            "category": product.get("category") or "",
+            "geo": product.get("geo") or "",
+            "verifiedFacts": [
+                item
+                for item in (product.get("verifiedFacts") or [])
+                if str(item).strip() and not str(item).strip().startswith("http")
+            ],
+            "contextLimited": bool(product.get("contextLimited")),
+        },
         "brief": {
-            "promotedProduct": brief.get("promotedProduct"),
+            "promotedProduct": brief.get("promotedProduct") or product.get("name") or "",
             "targetAudience": brief.get("targetAudience"),
             "primaryCustomerNeed": brief.get("primaryCustomerNeed"),
             "mainValueProposition": brief.get("mainValueProposition"),
             "keyBenefits": brief.get("keyBenefits") or [],
             "verifiedProductFacts": brief.get("verifiedProductFacts") or [],
             "visualDirection": brief.get("visualDirection"),
-            "cta": brief.get("cta"),
             "toneOfVoice": brief.get("toneOfVoice"),
         },
         "concept": concept,
@@ -355,7 +384,10 @@ async def generate_image_specification(
     )
     product = context.get("productContext")
     try:
-        spec["imagePrompt"] = _validated_image_prompt(spec.get("imagePrompt") or "", product_context=product)
+        spec["imagePrompt"] = _with_offer_description(
+            _validated_image_prompt(spec.get("imagePrompt") or "", product_context=product),
+            context,
+        )
         return spec
     except AppError as first_error:
         if first_error.code != "AI_INVALID_RESPONSE":
@@ -380,8 +412,9 @@ async def generate_image_specification(
             reasoning_effort=promo_reasoning(heavy=False),
             extra_metadata=extra,
         )
-        compact["imagePrompt"] = _validated_image_prompt(
-            compact.get("imagePrompt") or "", product_context=product
+        compact["imagePrompt"] = _with_offer_description(
+            _validated_image_prompt(compact.get("imagePrompt") or "", product_context=product),
+            context,
         )
         return compact
 

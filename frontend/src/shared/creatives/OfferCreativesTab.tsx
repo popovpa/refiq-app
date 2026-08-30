@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { api } from '@/shared/api/client';
@@ -6,6 +6,26 @@ import { Button } from '@/shared/components/Button';
 import { ConfirmDialog } from '@/shared/components/ConfirmDialog';
 import { useToast } from '@/shared/components/Toast';
 import { aiErrorMessage } from '@/shared/ai/messages';
+import type { BusinessPromotionLink } from '@/shared/links/BusinessLinkDetailDrawer';
+import { trafficLabel } from '@/shared/offers/labels';
+import { displayTrackingUrl } from '@/shared/offers/trackingLink';
+import { cn } from '@/shared/utils/cn';
+import {
+  allEnabledSelected,
+  emptySelection,
+  hasSelection,
+  isKitSubmitValid,
+  kitRequestPayload,
+  matchesLinkQuery,
+  qrSelected,
+  recommendedSelection,
+  selectAllSlots,
+  selectNoneSlots,
+  setQrTrackingLink,
+  syncQrLink,
+  toggleSlot,
+  type KitSelection,
+} from './kitSelection';
 import { PromoImageGallery } from './PromoImageGallery';
 import { PromoTextList, type TextEditDraft } from './PromoTextList';
 import { GenerationProgressPanel } from './GenerationProgressPanel';
@@ -22,16 +42,18 @@ const TERMINAL_RUN = new Set(['completed', 'completed_with_errors', 'cancelled',
 export function OfferCreativesTab({
   offerId,
   variant = 'full',
+  onCreateTrackingLink,
 }: {
   offerId: string;
   variant?: 'full' | 'banner';
+  onCreateTrackingLink?: () => void;
 }) {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const [kitOpen, setKitOpen] = useState(false);
   const [forceSelection, setForceSelection] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selection, setSelection] = useState<KitSelection>(emptySelection());
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelPending, setCancelPending] = useState(false);
   const [seenTerminal, setSeenTerminal] = useState(false);
@@ -45,6 +67,12 @@ export function OfferCreativesTab({
   const catalogQuery = useQuery<{ items: PromoCatalogItem[]; recommended: string[] }>({
     queryKey: ['business', 'offers', offerId, 'promo-catalog'],
     queryFn: () => api.get(`/business/offers/${offerId}/promo-generation-catalog`),
+    enabled: kitOpen || variant === 'full',
+  });
+
+  const offerQuery = useQuery<{ promotion_links?: BusinessPromotionLink[] }>({
+    queryKey: ['business', 'offers', offerId],
+    queryFn: () => api.get(`/business/offers/${offerId}`),
     enabled: kitOpen || variant === 'full',
   });
 
@@ -76,17 +104,13 @@ export function OfferCreativesTab({
   const catalog = catalogQuery.data?.items || [];
   const recommended =
     catalogQuery.data?.recommended || catalog.filter((item) => item.recommended).map((item) => item.id);
+  const promoLinks = offerQuery.data?.promotion_links || [];
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['business', 'offers', offerId, 'creatives'] });
     queryClient.invalidateQueries({ queryKey: ['business', 'offers', offerId, 'promo-generation-active'] });
+    queryClient.invalidateQueries({ queryKey: ['business', 'offers', offerId] });
   };
-
-  useEffect(() => {
-    if (catalog.length && selected.size === 0 && !liveRun) {
-      setSelected(new Set(recommended));
-    }
-  }, [catalog, recommended, selected.size, liveRun]);
 
   useEffect(() => {
     if (!liveRun) return;
@@ -98,6 +122,7 @@ export function OfferCreativesTab({
   const openKitSelection = () => {
     setForceSelection(true);
     setKitOpen(true);
+    setSelection(syncQrLink(recommendedSelection(recommended), promoLinks));
   };
 
   const openKitDetails = () => {
@@ -107,9 +132,10 @@ export function OfferCreativesTab({
 
   const startKit = async () => {
     try {
-      const result = await api.post<PromoGenerationRun>(`/business/offers/${offerId}/creatives/promo-kit`, {
-        slots: Array.from(selected),
-      });
+      const result = await api.post<PromoGenerationRun>(
+        `/business/offers/${offerId}/creatives/promo-kit`,
+        kitRequestPayload(selection),
+      );
       setSeenTerminal(false);
       setForceSelection(false);
       queryClient.setQueryData(['business', 'offers', offerId, 'promo-generation-active'], { run: result });
@@ -246,12 +272,7 @@ export function OfferCreativesTab({
   };
 
   const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    setSelection((prev) => toggleSlot(prev, id, promoLinks));
   };
 
   if (variant === 'banner') {
@@ -270,13 +291,15 @@ export function OfferCreativesTab({
           <KitModal
             phase={modalPhase}
             catalog={catalog}
-            selected={selected}
+            selected={selection}
+            links={promoLinks}
             run={liveRun}
             onClose={() => setKitOpen(false)}
             onToggle={toggle}
-            onRecommended={() => setSelected(new Set(recommended))}
-            onAll={() => setSelected(new Set(catalog.map((item) => item.id)))}
-            onNone={() => setSelected(new Set())}
+            onAll={() => setSelection(selectAllSlots(catalog.map((item) => item.id), promoLinks))}
+            onNone={() => setSelection(selectNoneSlots())}
+            onQrLinkChange={(id) => setSelection((prev) => setQrTrackingLink(prev, id))}
+            onCreateLink={onCreateTrackingLink}
             onCreate={startKit}
             onStop={() => setCancelOpen(true)}
             onRetry={retryItem}
@@ -391,13 +414,15 @@ export function OfferCreativesTab({
         <KitModal
           phase={modalPhase}
           catalog={catalog}
-          selected={selected}
+          selected={selection}
+          links={promoLinks}
           run={liveRun}
           onClose={() => setKitOpen(false)}
           onToggle={toggle}
-          onRecommended={() => setSelected(new Set(recommended))}
-          onAll={() => setSelected(new Set(catalog.map((item) => item.id)))}
-          onNone={() => setSelected(new Set())}
+          onAll={() => setSelection(selectAllSlots(catalog.map((item) => item.id), promoLinks))}
+          onNone={() => setSelection(selectNoneSlots())}
+          onQrLinkChange={(id) => setSelection((prev) => setQrTrackingLink(prev, id))}
+          onCreateLink={onCreateTrackingLink}
           onCreate={startKit}
           onStop={() => setCancelOpen(true)}
           onRetry={retryItem}
@@ -434,12 +459,14 @@ function KitModal({
   phase,
   catalog,
   selected,
+  links,
   run,
   onClose,
   onToggle,
-  onRecommended,
   onAll,
   onNone,
+  onQrLinkChange,
+  onCreateLink,
   onCreate,
   onStop,
   onRetry,
@@ -449,13 +476,15 @@ function KitModal({
 }: {
   phase: 'selection' | 'generation' | 'result';
   catalog: PromoCatalogItem[];
-  selected: Set<string>;
+  selected: KitSelection;
+  links: BusinessPromotionLink[];
   run: PromoGenerationRun | null;
   onClose: () => void;
   onToggle: (id: string) => void;
-  onRecommended: () => void;
   onAll: () => void;
   onNone: () => void;
+  onQrLinkChange: (id: string | null) => void;
+  onCreateLink?: () => void;
   onCreate: () => void;
   onStop: () => void;
   onRetry: (item: PromoGenerationItem) => void;
@@ -465,14 +494,16 @@ function KitModal({
 }) {
   const textSlots = catalog.filter((item) => item.group === 'text');
   const imageSlots = catalog.filter((item) => item.group === 'image');
+  const catalogIds = catalog.map((item) => item.id);
   const failed = run?.items.filter((item) => item.status === 'failed').length || 0;
   const cancelled = run?.items.filter((item) => item.status === 'cancelled').length || 0;
   const retryable = failed + cancelled;
+  const canSubmit = isKitSubmitValid(selected);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-foreground/30">
       <div className="ui-card w-full max-w-lg max-h-[88vh] flex flex-col shadow-soft" role="dialog" aria-modal="true">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/70">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/70 shrink-0">
           <h3 className="ui-section-title">
             {phase === 'selection' ? 'Набор материалов' : phase === 'generation' ? 'Материалы создаются' : 'Результат'}
           </h3>
@@ -483,22 +514,39 @@ function KitModal({
         <div className="overflow-auto p-5 space-y-4">
           {phase === 'selection' && (
             <>
-              <p className="text-sm text-muted-foreground">
-                AI предлагает рекомендуемый набор. Можно отключить лишнее или добавить дополнительные материалы.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" onClick={onRecommended}>
-                  Выбрать рекомендованные
-                </Button>
-                <Button size="sm" variant="secondary" onClick={onAll}>
-                  Выбрать всё
-                </Button>
-                <Button size="sm" variant="ghost" onClick={onNone}>
-                  Снять всё
-                </Button>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-muted-foreground">Выберите материалы, которые нужно создать.</p>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-primary hover:underline disabled:text-muted-foreground disabled:no-underline disabled:cursor-default"
+                    onClick={onAll}
+                    disabled={allEnabledSelected(selected, catalogIds)}
+                  >
+                    Выбрать всё
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-default"
+                    onClick={onNone}
+                    disabled={!hasSelection(selected)}
+                  >
+                    Снять всё
+                  </button>
+                </div>
               </div>
-              <CheckboxGroup title="Тексты" items={textSlots} selected={selected} onToggle={onToggle} />
-              <CheckboxGroup title="Изображения" items={imageSlots} selected={selected} onToggle={onToggle} />
+              <ChipGroup title="Тексты" items={textSlots} selected={selected} onToggle={onToggle} />
+              <div className="space-y-2.5">
+                <ChipGroup title="Изображения" items={imageSlots} selected={selected} onToggle={onToggle} />
+                {qrSelected(selected) ? (
+                  <QrLinkPicker
+                    links={links}
+                    value={selected.qrTrackingLinkId}
+                    onChange={onQrLinkChange}
+                    onCreateLink={onCreateLink}
+                  />
+                ) : null}
+              </div>
             </>
           )}
           {phase !== 'selection' && run && (
@@ -513,13 +561,13 @@ function KitModal({
             </>
           )}
         </div>
-        <div className="px-5 py-4 border-t border-border/70 flex justify-end gap-2">
+        <div className="px-5 py-4 border-t border-border/70 flex justify-end gap-2 shrink-0">
           {phase === 'selection' && (
             <>
               <Button variant="ghost" onClick={onClose}>
                 Отмена
               </Button>
-              <Button onClick={onCreate} disabled={!selected.size}>
+              <Button onClick={onCreate} disabled={!canSubmit}>
                 Создать с AI
               </Button>
             </>
@@ -555,7 +603,14 @@ function KitModal({
   );
 }
 
-function CheckboxGroup({
+const IMAGE_CHIP_LABELS: Record<string, string> = {
+  images_1_1: '1:1',
+  images_16_9: '16:9',
+  images_9_16: '9:16',
+  images_qr: 'С QR-кодом',
+};
+
+function ChipGroup({
   title,
   items,
   selected,
@@ -563,22 +618,115 @@ function CheckboxGroup({
 }: {
   title: string;
   items: PromoCatalogItem[];
-  selected: Set<string>;
+  selected: KitSelection;
   onToggle: (id: string) => void;
 }) {
   return (
     <div>
-      <h4 className="text-sm font-medium mb-2">{title}</h4>
-      <div className="space-y-1.5">
-        {items.map((item) => (
-          <label key={item.id} className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={selected.has(item.id)} onChange={() => onToggle(item.id)} />
-            <span>{item.label}</span>
-          </label>
-        ))}
+      <h4 className="text-[13px] font-medium text-muted-foreground mb-2">{title}</h4>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item) => {
+          const checked = selected.selected.includes(item.id);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              aria-pressed={checked}
+              onClick={() => onToggle(item.id)}
+              className={cn(
+                'h-8 px-3 rounded-md text-sm font-medium border transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+                checked
+                  ? 'border-primary/30 bg-accent text-primary'
+                  : 'border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/60',
+              )}
+            >
+              {IMAGE_CHIP_LABELS[item.id] || item.label}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+function QrLinkPicker({
+  links,
+  value,
+  onChange,
+  onCreateLink,
+}: {
+  links: BusinessPromotionLink[];
+  value: string | null;
+  onChange: (id: string | null) => void;
+  onCreateLink?: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const active = useMemo(
+    () => links.filter((link) => String(link.status).toUpperCase() === 'ACTIVE'),
+    [links],
+  );
+  const filtered = useMemo(
+    () => active.filter((link) => matchesLinkQuery(link, query)),
+    [active, query],
+  );
+
+  if (!active.length) {
+    return (
+      <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2.5 space-y-2">
+        <p className="text-sm">Для QR-кода нужна трекинговая ссылка.</p>
+        <p className="text-xs text-muted-foreground">Ссылку создаёт партнёр. После появления она станет доступна здесь.</p>
+        {onCreateLink ? (
+          <Button size="sm" variant="secondary" onClick={onCreateLink}>
+            Создать ссылку
+          </Button>
+        ) : null}
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-md border border-border/70 bg-muted/30 px-3 py-2.5 space-y-2">
+      <p className="text-[13px] font-medium text-muted-foreground">Ссылка для QR-кода</p>
+      {active.length > 8 ? (
+        <input
+          className="ui-input"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Поиск по названию, каналу или коду"
+        />
+      ) : null}
+      <select
+        className="ui-input"
+        value={value || ''}
+        onChange={(event) => onChange(event.target.value || null)}
+      >
+        {active.length > 1 && !value ? <option value="">Выберите ссылку</option> : null}
+        {filtered.map((link) => (
+          <option key={link.id} value={String(link.id)}>
+            {qrLinkTitle(link)} · {qrLinkHost(link)}
+          </option>
+        ))}
+      </select>
+      {value ? (
+        <p className="text-xs text-muted-foreground">{qrLinkHost(active.find((link) => String(link.id) === value))}</p>
+      ) : (
+        <p className="text-xs text-destructive">Выберите трекинговую ссылку</p>
+      )}
+    </div>
+  );
+}
+
+function qrLinkTitle(link: BusinessPromotionLink): string {
+  const source = link.traffic_source ? trafficLabel(link.traffic_source) : '';
+  const name = link.name || link.partner_name || 'Ссылка';
+  return source ? `${source} · ${name}` : name;
+}
+
+function qrLinkHost(link?: BusinessPromotionLink): string {
+  if (!link) return '';
+  if (link.short_code) return displayTrackingUrl(link.short_code);
+  return link.url.replace(/^https?:\/\//, '');
 }
 
 const ITEM_STATUS_LABELS: Record<PromoGenerationItem['status'], string> = {

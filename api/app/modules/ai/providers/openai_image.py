@@ -99,6 +99,7 @@ class OpenAIImageGenerationProvider:
             aspect_ratio=request.aspect_ratio,
             image_format=request.image_format,
             prompt_chars=len(request.prompt or ""),
+            prompt=request.prompt,
             timeout_seconds=self._timeout,
             operation=request.operation,
         )

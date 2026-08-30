@@ -116,7 +116,9 @@ def test_image_prompt_advertises_car_not_commission():
     lower = prompt.lower()
     assert "customer acquisition" in lower
     assert "авто из салона" in lower
+    assert "новый городской автомобиль" in lower
     assert "тест-драйв" in lower
+    assert "no cta buttons" in lower
     assert "50 000" not in prompt
     assert "50000" not in prompt
     assert "партнёрская программа" not in lower
@@ -138,7 +140,7 @@ def test_image_prompt_drops_affiliate_concept():
     assert "комфорт для ежедневных поездок" in lower
 
 
-def test_qr_image_prompt_uses_customer_cta():
+def test_qr_image_prompt_leaves_space_without_cta_ui():
     snapshot = OfferPromotionContextBuilder().from_offer(_car_offer())
     prompt = image_prompt(
         snapshot,
@@ -149,8 +151,10 @@ def test_qr_image_prompt_uses_customer_cta():
     lower = prompt.lower()
     assert "never write «qr партнёра»" in lower
     assert "партнёрская ссылка" in lower
-    assert "записаться на тест-драйв" in lower
     assert "do not draw any qr code" in lower
+    assert "записаться на тест-драйв" not in lower
+    assert "visible cta" not in lower
+    assert "button" in lower
 
 
 def test_medical_service_image_prompt_omits_commission():
@@ -321,6 +325,10 @@ async def test_image_spec_excludes_affiliate_economics(monkeypatch):
     assert "комисс" not in user_prompt.lower()
     assert "payout" not in user_prompt.lower()
     assert "affiliateConstraints" not in user_prompt
+    assert "Новый городской автомобиль" in user_prompt
+    assert '"description"' in user_prompt
+    assert '"cta"' not in user_prompt
+    assert "Description: Новый городской автомобиль" in spec["imagePrompt"]
     prompt = spec["imagePrompt"].lower()
     assert "exeed rx" in prompt
     assert "комисс" not in prompt
@@ -380,6 +388,9 @@ async def test_medical_image_spec_omits_commission(monkeypatch):
     assert "800" not in spec["imagePrompt"]
     assert "комисс" not in spec["imagePrompt"].lower()
     assert "cpa" not in fake.calls[0].user_prompt.lower()
+    user_prompt = fake.calls[0].user_prompt
+    assert "УЗИ органов брюшной полости" in user_prompt
+    assert '"cta"' not in user_prompt
 
 
 def test_copy_guard_rejects_sale_bounty_copy():

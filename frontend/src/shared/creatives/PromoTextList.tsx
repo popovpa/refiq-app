@@ -12,13 +12,18 @@ import {
 import type { Creative, CreativeTextVariant, PromoGenerationItem, PromoGenerationRun } from './types';
 
 const SLOT_ORDER = [
+  'telegram',
+  'meta_ads',
+  'google_ads',
+  'yandex_direct',
+  'vk_ads',
+  'tiktok_ads',
+  'telegram_posts',
+  'vk_posts',
   'universal_ad',
   'short_ad',
   'headlines',
   'descriptions',
-  'telegram_posts',
-  'vk_posts',
-  'yandex_direct',
 ];
 
 const LIST_PREVIEW = 3;
@@ -942,7 +947,15 @@ function materialIds(item: PromoGenerationItem) {
 }
 
 function textLayout(item: Creative): TextLayout {
-  if (item.channel === 'yandex_direct' || (item.descriptions && item.descriptions.length)) return 'yandex';
+  if (
+    item.channel === 'yandex_direct' ||
+    item.channel === 'google_ads' ||
+    item.channel === 'meta_ads' ||
+    item.channel === 'tiktok_ads' ||
+    (item.descriptions && item.descriptions.length)
+  ) {
+    return 'yandex';
+  }
   if (item.selected_variant === 'headlines') return 'headlines';
   if (item.selected_variant === 'descriptions') return 'descriptions';
   return 'long';
