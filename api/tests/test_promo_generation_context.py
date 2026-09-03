@@ -114,11 +114,11 @@ def test_image_prompt_advertises_car_not_commission():
         aspect="1:1",
     )
     lower = prompt.lower()
-    assert "customer acquisition" in lower
+    assert "привлечение клиентов" in lower
     assert "авто из салона" in lower
     assert "новый городской автомобиль" in lower
     assert "тест-драйв" in lower
-    assert "no cta buttons" in lower
+    assert "без cta-кнопок" in lower
     assert "50 000" not in prompt
     assert "50000" not in prompt
     assert "партнёрская программа" not in lower
@@ -149,12 +149,12 @@ def test_qr_image_prompt_leaves_space_without_cta_ui():
         qr_safe=True,
     )
     lower = prompt.lower()
-    assert "never write «qr партнёра»" in lower
+    assert "никогда не пишите «qr партнёра»" in lower
     assert "партнёрская ссылка" in lower
-    assert "do not draw any qr code" in lower
+    assert "не рисуйте qr-код" in lower
     assert "записаться на тест-драйв" not in lower
     assert "visible cta" not in lower
-    assert "button" in lower
+    assert "кнопк" in lower
 
 
 def test_medical_service_image_prompt_omits_commission():
@@ -179,8 +179,10 @@ def test_medical_service_image_prompt_omits_commission():
     )
     assert "узи" in prompt.lower()
     assert "800 ₽" not in prompt
-    assert "800" not in prompt.split("STRICT RULES")[0]
-    assert "комиссия" not in prompt.lower()
+    assert "800" not in prompt.split("СТРОГИЕ ПРАВИЛА")[0]
+    product_section = prompt.split("ЦЕННОСТЬ ДЛЯ КЛИЕНТА:")[0]
+    assert "комиссия" not in product_section.lower()
+    assert "cpa" not in product_section.lower()
 
 
 def test_copy_guard_rejects_affiliate_recruiting():
@@ -232,7 +234,10 @@ def test_affiliate_only_description_is_not_used_as_product_copy():
     assert payload["productContext"]["contextLimited"] is True
     prompt = image_prompt(payload, {"cta": "Узнать комплектации"}, "Автомобиль в городе")
     assert "50 000" not in prompt
-    assert "комисс" not in prompt.lower()
+    # Product description must stay stripped; policy text may mention the forbidden word.
+    product_section = prompt.split("ЦЕННОСТЬ ДЛЯ КЛИЕНТА:")[0]
+    assert "комисс" not in product_section.lower()
+    assert "cpa" not in product_section.lower()
 
 
 def test_sanitize_brief_drops_affiliate_concepts_and_cta():
@@ -328,7 +333,7 @@ async def test_image_spec_excludes_affiliate_economics(monkeypatch):
     assert "Новый городской автомобиль" in user_prompt
     assert '"description"' in user_prompt
     assert '"cta"' not in user_prompt
-    assert "Offer description (must be reflected in the scene): Новый городской автомобиль" in spec["imagePrompt"]
+    assert "Описание оффера (обязательно отразить в сцене): Новый городской автомобиль" in spec["imagePrompt"]
     prompt = spec["imagePrompt"].lower()
     assert "exeed rx" in prompt
     assert "комисс" not in prompt

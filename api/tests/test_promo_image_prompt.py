@@ -51,17 +51,19 @@ def test_compact_noop_when_already_short():
 
 def test_image_spec_prompt_has_no_character_cap():
     text = image_spec_system_prompt()
-    assert "no character cap" in text
+    assert "no character cap" not in text
+    assert "без лимита символов" in text
     assert "HARD LIMIT" not in text
     assert "Alice AI ART" not in text
     assert "PRODUCT_CONTEXT.description" in text or "mustReflectInScene" in text
-    assert "visually encode the concrete conditions" in text
-    assert "NO CTA buttons" in text
+    assert "визуально передавать конкретные условия" in text
+    assert "NO CTA buttons" not in text
+    assert "НЕ содержать CTA-кнопок" in text
     assert "headline and CTA only" not in text
     compact = image_spec_system_prompt(compact=True)
-    assert "REWRITE" in compact
-    assert "character cap" in compact
-    assert "CTA button" in compact
+    assert "ПЕРЕПИШИТЕ" in compact
+    assert "лимита символов" in compact
+    assert "CTA-кнопки" in compact
 
 
 @pytest.mark.asyncio
@@ -99,8 +101,8 @@ async def test_long_image_spec_is_accepted_without_truncation(monkeypatch):
         item_id=64,
     )
     assert _LONG_SPEC["imagePrompt"].strip() in spec["imagePrompt"]
-    assert "Offer description (must be reflected in the scene): Премиальный кроссовер" in spec["imagePrompt"]
-    assert spec["imagePrompt"].startswith("Offer description (must be reflected in the scene):")
+    assert "Описание оффера (обязательно отразить в сцене): Премиальный кроссовер" in spec["imagePrompt"]
+    assert spec["imagePrompt"].startswith("Описание оффера (обязательно отразить в сцене):")
     assert len(spec["imagePrompt"]) > 500
     assert "EXEED RX" in spec["imagePrompt"]
     assert "комисс" not in spec["imagePrompt"].lower()
@@ -118,7 +120,7 @@ def test_image_prompt_keeps_full_offer_description_up_front():
         "Premium car advertisement, modern showroom lighting.",
         {"productContext": {"description": description}},
     )
-    assert prompt.startswith(f"Offer description (must be reflected in the scene): {description}")
+    assert prompt.startswith(f"Описание оффера (обязательно отразить в сцене): {description}")
     assert "Premium car advertisement" in prompt
     assert "старше 50 лет" in prompt
     assert "старше 60 лет" in prompt

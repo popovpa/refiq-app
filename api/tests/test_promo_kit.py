@@ -366,7 +366,7 @@ async def test_promo_kit_creates_drafts_and_usage(
         lower = prompt.lower()
         assert "crm pro" in lower
         assert IMAGE_SPEC["imagePrompt"] in prompt
-        assert "Description:" in prompt
+        assert "Описание оффера (обязательно отразить в сцене):" in prompt
         assert "комиссия" not in lower
         assert "партнёрская программа" not in lower
         assert "allowed_traffic" not in lower

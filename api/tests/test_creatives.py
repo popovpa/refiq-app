@@ -150,7 +150,7 @@ async def test_generate_text_structured_not_saved(
     ).scalar_one()
     assert usage.status == "succeeded"
     assert usage.operation == Operation.CREATIVE_TEXT_GENERATION.value
-    assert usage.prompt_version == "creative-text-v1"
+    assert usage.prompt_version == "creative-text-v2"
     assert usage.provider_metadata
 
     polled = await client.get(f"/api/v1/ai/generations/{body['generation_id']}")

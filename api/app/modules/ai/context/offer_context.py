@@ -20,9 +20,9 @@ class OfferAIContextBuilder:
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "priority": [
-                "Explicit user input always has the highest priority.",
-                "Website context is supplementary product information only.",
-                "Use RefIQ defaults only for unspecified commercial rules.",
+                "Явный ввод пользователя всегда имеет наивысший приоритет.",
+                "Контекст сайта — только дополнительная информация о продукте.",
+                "Значения RefIQ по умолчанию используйте только для неуказанных коммерческих правил.",
             ],
             "user_description": description.strip(),
             "category": category.strip() if category else None,
@@ -216,9 +216,9 @@ def _product_context(offer: Offer, product: Product | None) -> dict[str, Any]:
         "verifiedFacts": facts,
         "contextLimited": limited,
         "sourcePriority": [
-            "structured product/offer customer-facing fields",
-            "product landing URL if present",
-            "verified facts already stored on the offer",
+            "структурированные клиентские поля продукта/оффера",
+            "URL лендинга продукта, если есть",
+            "подтверждённые факты, уже сохранённые в оффере",
         ],
     }
 

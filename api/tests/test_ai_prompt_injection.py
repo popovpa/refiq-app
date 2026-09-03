@@ -321,7 +321,7 @@ async def test_valid_guidance_reaches_trusted_prompt_builder(
     assert "EDIT_OFFER" in prompt
     assert "UNTRUSTED" in prompt
     assert "Сделай описание короче и понятнее" in prompt
-    assert "untrusted data" in ai_fake.calls[0].system_prompt.lower()
+    assert "недоверенные данные" in ai_fake.calls[0].system_prompt.lower()
 
 
 @pytest.mark.asyncio

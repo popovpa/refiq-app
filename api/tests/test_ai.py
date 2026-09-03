@@ -195,7 +195,7 @@ async def test_offer_draft_structured_and_not_saved(
     assert usage.operation == Operation.OFFER_CREATE_DRAFT.value
     assert usage.provider == "fake"
     assert usage.model == "fake-model"
-    assert usage.prompt_version == "offer-create-v3"
+    assert usage.prompt_version == "offer-create-v4"
     assert usage.input_tokens == 11
     assert usage.output_tokens == 7
     assert usage.total_tokens == 18
@@ -383,7 +383,7 @@ async def test_rewrite_field_changes_only_requested_field(
     assert body["value"] == "CRM Pro для партнёров"
     assert list(body.keys()) == ["generation_id", "field", "value"]
     request = ai_fake.calls[0]
-    assert request.prompt_version == "offer-field-rewrite-v2"
+    assert request.prompt_version == "offer-field-rewrite-v3"
     assert '"field": "name"' in request.user_prompt
 
 

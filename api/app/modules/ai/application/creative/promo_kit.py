@@ -346,7 +346,7 @@ def _with_offer_description(prompt: str, context: dict | None) -> str:
         return prompt
     # Put the full offer description first so the image model must ground the scene in it.
     return normalize_image_prompt(
-        f"Offer description (must be reflected in the scene): {description}\n\n{prompt}"
+        f"Описание оффера (обязательно отразить в сцене): {description}\n\n{prompt}"
     )
 
 
@@ -393,10 +393,10 @@ async def generate_image_specification(
         "format": aspect,
         "qrSafe": qr_safe,
         "instruction": (
-            "Build imagePrompt so the final image visually matches the full offer description, "
-            "including product condition, audience, and setting. Do not replace specifics with a generic scene."
+            "Соберите imagePrompt так, чтобы итоговое изображение визуально соответствовало полному описанию оффера, "
+            "включая состояние продукта, аудиторию и обстановку. Не заменяйте конкретику типичной сценой."
             if offer_description
-            else "Build imagePrompt from available product facts only."
+            else "Соберите imagePrompt только по доступным фактам о продукте."
         ),
     }
     extra = _usage_meta(run_id=run_id, item_id=item_id, offer_id=offer_id)
