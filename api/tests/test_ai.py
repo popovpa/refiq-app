@@ -375,7 +375,7 @@ async def test_rewrite_field_changes_only_requested_field(
     ai_fake.queue_structured({"value": "CRM Pro для партнёров"})
     response = await client.post(
         f"/api/v1/ai/offers/{offer_id}/fields/name/rewrite",
-        json={"instruction": "сделать более продающим"},
+        json={"preset": "selling"},
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -383,8 +383,47 @@ async def test_rewrite_field_changes_only_requested_field(
     assert body["value"] == "CRM Pro для партнёров"
     assert list(body.keys()) == ["generation_id", "field", "value"]
     request = ai_fake.calls[0]
-    assert request.prompt_version == "offer-field-rewrite-v3"
+    assert request.prompt_version == "offer-field-rewrite-v6"
     assert '"field": "name"' in request.user_prompt
+    assert '"preset": "selling"' in request.user_prompt
+    assert '"USER_GUIDANCE":' not in request.user_prompt
+    assert '"trustedInstruction"' in request.user_prompt
+
+
+@pytest.mark.asyncio
+async def test_rewrite_rejects_custom_guidance(client: AsyncClient, ai_fake: FakeTextGenerationProvider):
+    await register_business(client, "ai-rewrite-custom@example.com")
+    offer_id = await _create_offer(client)
+    response = await client.post(
+        f"/api/v1/ai/offers/{offer_id}/fields/name/rewrite",
+        json={"preset": "selling", "guidance": "добавь результат 4+4"},
+    )
+    assert response.status_code == 422
+    assert ai_fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_rewrite_rejects_instruction_only(client: AsyncClient, ai_fake: FakeTextGenerationProvider):
+    await register_business(client, "ai-rewrite-instruction@example.com")
+    offer_id = await _create_offer(client)
+    response = await client.post(
+        f"/api/v1/ai/offers/{offer_id}/fields/name/rewrite",
+        json={"instruction": "сделать более продающим"},
+    )
+    assert response.status_code == 422
+    assert ai_fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_rewrite_rejects_unknown_preset(client: AsyncClient, ai_fake: FakeTextGenerationProvider):
+    await register_business(client, "ai-rewrite-unknown@example.com")
+    offer_id = await _create_offer(client)
+    response = await client.post(
+        f"/api/v1/ai/offers/{offer_id}/fields/name/rewrite",
+        json={"preset": "youthful"},
+    )
+    assert response.status_code == 422
+    assert ai_fake.calls == []
 
 
 @pytest.mark.asyncio
@@ -393,7 +432,7 @@ async def test_rewrite_unsupported_field(client: AsyncClient):
     offer_id = await _create_offer(client)
     response = await client.post(
         f"/api/v1/ai/offers/{offer_id}/fields/commission_value/rewrite",
-        json={"instruction": "увеличь"},
+        json={"preset": "selling"},
     )
     assert response.status_code == 400
 

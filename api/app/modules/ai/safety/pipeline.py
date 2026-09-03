@@ -13,11 +13,21 @@ from app.modules.ai.safety.operations import (
     SECURITY_SENSITIVE_OPERATIONS,
     normalize_preset,
 )
-from app.modules.ai.safety.semantic_guard import classify_guidance, semantic_guard_enabled
+from app.modules.ai.safety.policy import get_operation_policy
+from app.modules.ai.safety.scope_guard import inspect_scope
+from app.modules.ai.safety.semantic_guard import (
+    classify_guidance,
+    is_false_style_conflict,
+    semantic_guard_enabled,
+    user_facing_rejection_reason,
+)
 from app.modules.ai.safety.trusted_prompt import compose_guidance
 
-INVALID_GUIDANCE_MESSAGE = "Пожелание должно относиться к редактированию текущего материала."
-INVALID_OFFER_GUIDANCE_MESSAGE = "Пожелание должно относиться к редактированию оффера."
+INVALID_GUIDANCE_MESSAGE = (
+    "Не удалось применить пожелание. Используйте поле для изменения стиля, длины, структуры или акцентов текста. "
+    "Фактические данные изменяйте в полях оффера."
+)
+INVALID_OFFER_GUIDANCE_MESSAGE = INVALID_GUIDANCE_MESSAGE
 
 
 def invalid_ai_guidance(message: str | None = None) -> AiError:
@@ -53,6 +63,7 @@ async def evaluate_user_guidance(
     require_input: bool = True,
     message: str | None = None,
 ) -> EvaluatedGuidance:
+    policy = get_operation_policy(operation)
     preset_id, text = resolve_guidance_fields(instruction=instruction, guidance=guidance, preset=preset)
     if require_input and not preset_id and not text:
         raise invalid_ai_guidance(message)
@@ -67,9 +78,31 @@ async def evaluate_user_guidance(
             user_id=user_id,
             offer_id=offer_id,
             payload=text,
-            extra={"layer": "local"},
+            extra={"layer": "local", "blocked_stage": "INPUT_GUARD"},
         )
         raise invalid_ai_guidance(message)
+    if text:
+        scope = inspect_scope(text, operation=operation, policy=policy)
+        if not scope.allowed:
+            log_security_event(
+                event_for_category(scope.category),
+                operation=operation,
+                source=source,
+                category=scope.category,
+                accepted=False,
+                user_id=user_id,
+                offer_id=offer_id,
+                payload=text,
+                extra={
+                    "layer": "scope",
+                    "blocked_stage": "SCOPE_GUARD",
+                    "reason_code": scope.reason_code,
+                    "valid_intents": list(scope.valid_intents),
+                    "invalid_intents": list(scope.invalid_intents),
+                    "user_message": scope.message,
+                },
+            )
+            raise invalid_ai_guidance(scope.message)
     if text and _should_classify(text, preset_id, local.decision, operation):
         await _run_semantic(
             text,
@@ -157,13 +190,40 @@ async def _run_semantic(
             user_id=user_id,
             offer_id=offer_id,
             payload=text,
-            extra={"layer": "semantic", "reason": "guard_failed"},
+            extra={"layer": "semantic", "reason": "guard_failed", "blocked_stage": "SCOPE_GUARD"},
         )
         if fail_closed:
             raise invalid_ai_guidance(message)
         return
+    if result.invalid_intents:
+        detail = user_facing_rejection_reason(result, fallback=message or INVALID_GUIDANCE_MESSAGE)
+        log_security_event(
+            event_for_category(
+                "MIXED_VALID_AND_INVALID_GUIDANCE" if result.valid_intents else result.category
+            ),
+            operation=operation,
+            source=source,
+            category="MIXED_VALID_AND_INVALID_GUIDANCE" if result.valid_intents else result.category,
+            accepted=False,
+            user_id=user_id,
+            offer_id=offer_id,
+            payload=text,
+            extra={
+                "layer": "semantic",
+                "blocked_stage": "SCOPE_GUARD",
+                "reason_code": result.reason_code,
+                "valid_intents": list(result.valid_intents),
+                "invalid_intents": list(result.invalid_intents),
+                "user_message": detail,
+            },
+        )
+        raise invalid_ai_guidance(detail)
     if result.allowed and result.category == "VALID_GUIDANCE":
         return
+    if is_false_style_conflict(result, text):
+        return
+    fallback = message or INVALID_GUIDANCE_MESSAGE
+    detail = user_facing_rejection_reason(result, fallback=fallback)
     log_security_event(
         event_for_category(result.category),
         operation=operation,
@@ -173,6 +233,11 @@ async def _run_semantic(
         user_id=user_id,
         offer_id=offer_id,
         payload=text,
-        extra={"layer": "semantic", "reason_code": result.reason_code},
+        extra={
+            "layer": "semantic",
+            "blocked_stage": "SCOPE_GUARD",
+            "reason_code": result.reason_code,
+            "user_message": detail,
+        },
     )
-    raise invalid_ai_guidance(message)
+    raise invalid_ai_guidance(detail)

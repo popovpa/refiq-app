@@ -5,8 +5,11 @@ from typing import Any
 
 from app.modules.ai.errors import AiError
 from app.modules.ai.safety.events import SecurityEvent, log_security_event
+from app.modules.ai.safety.grounding import guard_output_grounding
 from app.modules.ai.safety.local_guard import inspect_local
 from app.modules.ai.safety.operations import AiOperation, InputSource, allowed_fields_for
+from app.modules.ai.safety.policy import AiOperationPolicy, get_operation_policy
+from app.modules.ai.safety.verified_context import VerifiedContext
 
 _LEAK = (
     "here is your system prompt",
@@ -48,6 +51,9 @@ def guard_output(
     operation: AiOperation,
     user_id: int | None = None,
     offer_id: str | int | None = None,
+    verified_context: VerifiedContext | None = None,
+    policy: AiOperationPolicy | None = None,
+    source_text: str | None = None,
 ) -> None:
     text = flatten_text(payload)
     lowered = text.casefold()
@@ -70,6 +76,21 @@ def guard_output(
             extra = unexpected - {"value"}
             if extra:
                 _reject(operation, user_id, offer_id, text, "UNEXPECTED_FIELD")
+    if operation in {
+        AiOperation.IMPROVE_OFFER_TITLE,
+        AiOperation.IMPROVE_OFFER_DESCRIPTION,
+        AiOperation.IMPROVE_OFFER_PARTNER_NOTES,
+        AiOperation.REWRITE_CREATIVE,
+    }:
+        guard_output_grounding(
+            payload,
+            operation=operation,
+            verified=verified_context,
+            policy=policy or get_operation_policy(operation),
+            source_text=source_text,
+            user_id=user_id,
+            offer_id=offer_id,
+        )
 
 
 def filter_allowed_fields(payload: dict[str, Any], operation: AiOperation) -> dict[str, Any]:
@@ -121,5 +142,6 @@ def _reject(
         user_id=user_id,
         offer_id=offer_id,
         payload=text,
+        extra={"blocked_stage": "OUTPUT_GUARD"},
     )
     raise AiError("AI_INVALID_RESPONSE", "AI returned an invalid response", 502)

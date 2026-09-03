@@ -117,7 +117,7 @@ function InputState({
         </div>
       ) : state.error ? (
         <div className="space-y-2">
-          <p className="text-sm text-destructive">Не удалось получить предложения.</p>
+          <p className="text-sm text-destructive">{state.error}</p>
           <p className="text-sm text-muted-foreground">Текущие данные оффера не изменены.</p>
         </div>
       ) : null}

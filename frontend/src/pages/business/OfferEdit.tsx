@@ -19,7 +19,7 @@ import {
   selectedSuggestions,
 } from '@/shared/ai/offerEditSession';
 import { applyFormValue } from '@/shared/ai/offerDraft';
-import { toAiGuidancePayload, type AiGuidanceRequest } from '@/shared/ai/presets';
+import { toAiGuidancePayload, toAiRewritePayload, type AiGuidanceRequest, type AiRewriteRequest } from '@/shared/ai/presets';
 import type {
   AiMarkedFields,
   AiRewriteField,
@@ -117,13 +117,13 @@ export function BusinessOfferEdit() {
       setGenerationId(payload.generation_id);
       dispatch({ type: 'SUCCESS', changes: payload.changes });
     },
-    onError: () => dispatch({ type: 'FAIL', error: 'Не удалось получить предложения.' }),
+    onError: (error) => dispatch({ type: 'FAIL', error: aiErrorMessage(error, 'Не удалось получить предложения.') }),
   });
 
   const rewriteField = useMutation({
-    mutationFn: ({ field, request }: { field: AiRewriteField; request: AiGuidanceRequest }) =>
+    mutationFn: ({ field, request }: { field: AiRewriteField; request: AiRewriteRequest }) =>
       api.post<OfferAiRewriteResponse>(`/ai/offers/${id}/fields/${field}/rewrite`, {
-        ...toAiGuidancePayload(request),
+        ...toAiRewritePayload(request),
         value: form[field],
         context: form,
       }),

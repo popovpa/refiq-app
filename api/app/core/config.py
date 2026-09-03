@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     AI_GUARD_MODEL: str = ""
     AI_SEMANTIC_GUARD_ENABLED: bool = True
     AI_SEMANTIC_GUARD_FAIL_CLOSED: bool = True
+    AI_OUTPUT_GROUNDING_ENABLED: bool = True
+    AI_SEMANTIC_GROUNDING_ENABLED: bool = False
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_PROMO_MODEL: str = "deepseek-v4-pro"

@@ -11,7 +11,8 @@ const MESSAGES: Record<string, string> = {
   AI_UNAUTHORIZED: 'Провайдер AI отклонил запрос.',
   AI_CAPABILITY_UNAVAILABLE: 'Эта возможность AI пока недоступна.',
   AI_FIELD_NOT_SUPPORTED: 'Это поле нельзя улучшить с помощью AI.',
-  INVALID_AI_GUIDANCE: 'Пожелание должно относиться к редактированию текущего материала.',
+  INVALID_AI_GUIDANCE:
+    'Не удалось применить пожелание. Используйте поле для изменения стиля, длины, структуры или акцентов текста. Фактические данные изменяйте в полях оффера.',
   CREATIVE_CONTENT_BLOCKED: 'Материал нарушает правила продвижения. Исправьте текст перед публикацией.',
   CREATIVE_TYPE_INVALID: 'Этот тип материала пока недоступен.',
   CREATIVE_IMAGE_EDIT_UNAVAILABLE: 'Редактирование баннера с AI пока недоступно.',
@@ -21,7 +22,11 @@ const MESSAGES: Record<string, string> = {
 export function aiErrorMessage(error: unknown, fallback = 'Не удалось выполнить запрос к AI'): string {
   const apiError = error as ApiError | undefined;
   const code = apiError?.error?.code;
+  const message =
+    typeof apiError?.error?.message === 'string' ? apiError.error.message.trim() : '';
+  // Prefer API detail for guidance refusals (specific Russian reason from the guard).
+  if (code === 'INVALID_AI_GUIDANCE' && message) return message;
   if (code && MESSAGES[code]) return MESSAGES[code];
-  if (typeof apiError?.error?.message === 'string' && apiError.error.message) return apiError.error.message;
+  if (message) return message;
   return fallback;
 }

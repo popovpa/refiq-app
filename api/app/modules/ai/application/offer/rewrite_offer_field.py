@@ -14,7 +14,9 @@ from app.modules.ai.prompts import offer as prompts
 from app.modules.ai.safety.operations import AiOperation, InputSource, rewrite_operation
 from app.modules.ai.safety.output_guard import filter_allowed_fields, guard_output
 from app.modules.ai.safety.pipeline import INVALID_OFFER_GUIDANCE_MESSAGE, evaluate_user_guidance
+from app.modules.ai.safety.policy import get_operation_policy
 from app.modules.ai.safety.trusted_prompt import build_structured_user_prompt, untrusted_block
+from app.modules.ai.safety.verified_context import build_verified_context
 from app.modules.ai.schemas import offer_rewrite_schema
 from app.modules.offers.models import Offer
 from app.modules.products.models import Product
@@ -32,15 +34,14 @@ async def rewrite_offer_field(
     user_id: int,
     business_id: int | None,
     field: str,
-    instruction: str | None = None,
-    guidance: str | None = None,
-    preset: str | None = None,
+    preset: str,
     offer_id: str | None = None,
     current_value: str | None = None,
     form_context: dict | None = None,
 ) -> dict:
     field = _validate_field(field)
     operation = rewrite_operation(field)
+    policy = get_operation_policy(operation)
     entity_id = None
     offer_ref = None
     if offer_id:
@@ -56,10 +57,9 @@ async def rewrite_offer_field(
         context = OfferAIContextBuilder().from_form(form_context or {})
         value = current_value if current_value is not None else context.get(field, "")
 
+    verified = build_verified_context(field=field, current_value=str(value or ""), offer_context=context)
     evaluated = await evaluate_user_guidance(
         operation=operation,
-        instruction=instruction,
-        guidance=guidance,
         preset=preset,
         user_id=user_id,
         offer_id=offer_ref,
@@ -71,9 +71,13 @@ async def rewrite_offer_field(
         system_prompt=prompts.rewrite_system_prompt(operation),
         user_prompt=build_structured_user_prompt(
             operation=operation,
-            trusted={"preset": evaluated.preset, "field": field},
+            trusted={
+                "preset": evaluated.preset,
+                "field": field,
+                "trustedInstruction": evaluated.composed,
+                "VERIFIED_CONTEXT": verified.as_prompt_dict(),
+            },
             untrusted={
-                "USER_GUIDANCE": untrusted_block(evaluated.guidance, InputSource.USER_GUIDANCE),
                 "OFFER_DATA": untrusted_block(context, InputSource.OFFER_FIELD),
                 "CURRENT_VALUE": untrusted_block(value, InputSource.OFFER_FIELD),
             },
@@ -90,7 +94,15 @@ async def rewrite_offer_field(
         entity_id=entity_id,
         payload_model=OfferRewritePayload,
     )
-    guard_output(payload, operation=operation, user_id=user_id, offer_id=offer_ref)
+    guard_output(
+        payload,
+        operation=operation,
+        user_id=user_id,
+        offer_id=offer_ref,
+        verified_context=verified,
+        policy=policy,
+        source_text=str(value or ""),
+    )
     filtered = filter_allowed_fields({"value": payload["value"]}, operation)
     return {
         "generation_id": generation_id,

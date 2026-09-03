@@ -7,7 +7,7 @@ import { useToast } from '@/shared/components/Toast';
 import { AiDraftBrief } from '@/shared/ai/AiDraftBrief';
 import { AiRewriteControl } from '@/shared/ai/AiRewriteControl';
 import { aiErrorMessage } from '@/shared/ai/messages';
-import { toAiGuidancePayload, type AiGuidanceRequest } from '@/shared/ai/presets';
+import { toAiRewritePayload, type AiRewriteRequest } from '@/shared/ai/presets';
 import { draftMarks, draftToForm, mergeAiDraftIntoForm } from '@/shared/ai/offerDraft';
 import type { AiMarkedFields, AiRewriteField, OfferAiDraftResponse, OfferAiRewriteResponse } from '@/shared/ai/types';
 import { CATEGORIES, GEO_OPTIONS } from '@/shared/offers/labels';
@@ -127,9 +127,9 @@ export function OfferWizard({
   });
 
   const rewriteField = useMutation({
-    mutationFn: ({ field, request }: { field: AiRewriteField; request: AiGuidanceRequest }) =>
+    mutationFn: ({ field, request }: { field: AiRewriteField; request: AiRewriteRequest }) =>
       api.post<OfferAiRewriteResponse>(`/ai/offers/fields/${field}/rewrite`, {
-        ...toAiGuidancePayload(request),
+        ...toAiRewritePayload(request),
         value: form[field],
         context: form,
       }),

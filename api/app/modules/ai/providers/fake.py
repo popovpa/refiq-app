@@ -25,6 +25,9 @@ DEFAULT_GUARD_RESPONSE = {
     "allowed": True,
     "category": "VALID_GUIDANCE",
     "reason_code": "OK",
+    "reason": "Пожелание допустимо.",
+    "valid_intents": ["CHANGE_STYLE"],
+    "invalid_intents": [],
 }
 
 

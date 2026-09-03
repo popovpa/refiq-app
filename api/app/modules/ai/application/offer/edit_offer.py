@@ -24,7 +24,9 @@ from app.modules.ai.prompts import offer as prompts
 from app.modules.ai.safety.operations import AiOperation, InputSource
 from app.modules.ai.safety.output_guard import guard_output
 from app.modules.ai.safety.pipeline import INVALID_OFFER_GUIDANCE_MESSAGE, evaluate_user_guidance
+from app.modules.ai.safety.policy import get_operation_policy
 from app.modules.ai.safety.trusted_prompt import build_structured_user_prompt, untrusted_block
+from app.modules.ai.safety.verified_context import build_verified_context
 from app.modules.ai.schemas import offer_edit_schema
 from app.modules.offers.models import Offer
 from app.modules.products.models import Product
@@ -60,13 +62,19 @@ async def propose_offer_edit(
             if value is not None
         }
         context = {**context, **overlay}
+    verified = build_verified_context(
+        field="offer",
+        current_value=str(context.get("description") or context.get("name") or ""),
+        offer_context=context,
+    )
+    policy = get_operation_policy(AiOperation.EDIT_OFFER)
     generation_id, payload, _result = await run_structured(
         schema=offer_edit_schema(),
         schema_name="offer_edit",
         system_prompt=prompts.edit_system_prompt(),
         user_prompt=build_structured_user_prompt(
             operation=AiOperation.EDIT_OFFER,
-            trusted={"preset": evaluated.preset},
+            trusted={"preset": evaluated.preset, "VERIFIED_CONTEXT": verified.as_prompt_dict()},
             untrusted={
                 "USER_GUIDANCE": untrusted_block(evaluated.guidance, InputSource.USER_GUIDANCE),
                 "OFFER_DATA": untrusted_block(context, InputSource.OFFER_FIELD),
@@ -79,7 +87,15 @@ async def propose_offer_edit(
         entity_id=str(offer.id),
         payload_model=OfferEditPayload,
     )
-    guard_output(payload, operation=AiOperation.EDIT_OFFER, user_id=user_id, offer_id=offer.id)
+    guard_output(
+        payload,
+        operation=AiOperation.EDIT_OFFER,
+        user_id=user_id,
+        offer_id=offer.id,
+        verified_context=verified,
+        policy=policy,
+        source_text="\n".join(str(context.get(key) or "") for key in ("name", "description", "partner_notes")),
+    )
     allow_rules = instruction_allows_business_rules(evaluated.guidance)
     changes = []
     seen: set[str] = set()

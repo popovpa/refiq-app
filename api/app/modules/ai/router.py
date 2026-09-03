@@ -1,5 +1,7 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -11,9 +13,13 @@ from app.modules.ai.application.offer.edit_offer import propose_offer_edit
 from app.modules.ai.application.offer.generate_offer_draft import generate_offer_draft
 from app.modules.ai.application.offer.rewrite_offer_field import rewrite_offer_field
 from app.modules.ai.lifecycle.service import AiGenerationService
+from app.modules.ai.safety.operations import TRUSTED_PRESETS
 from app.modules.ai.usage.service import AiUsageService
 
 router = APIRouter()
+
+REWRITE_PRESET = Literal["clearer", "shorter", "selling", "structure", "dedupe", "tone"]
+assert frozenset(REWRITE_PRESET.__args__) == frozenset(TRUSTED_PRESETS)  # type: ignore[attr-defined]
 
 FEEDBACK_OUTCOMES = {
     "ACCEPTED",
@@ -48,7 +54,12 @@ class EditOfferRequest(_GuidanceRequest):
     context: dict | None = None
 
 
-class RewriteFieldRequest(_GuidanceRequest):
+class RewriteFieldRequest(BaseModel):
+    """Field rewrite accepts only a fixed technical improvement type."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    preset: REWRITE_PRESET
     value: str | None = None
     context: dict | None = None
 
@@ -86,8 +97,6 @@ async def rewrite_form_field(
         user_id=parse_id(session_data["user_id"]),
         business_id=parse_id(session_data["active_business_id"]),
         field=field,
-        instruction=data.instruction,
-        guidance=data.guidance,
         preset=data.preset,
         current_value=data.value,
         form_context=data.context,
@@ -126,8 +135,6 @@ async def rewrite_existing_offer_field(
         user_id=parse_id(session_data["user_id"]),
         business_id=parse_id(session_data["active_business_id"]),
         field=field,
-        instruction=data.instruction,
-        guidance=data.guidance,
         preset=data.preset,
         offer_id=offer_id,
         current_value=data.value,

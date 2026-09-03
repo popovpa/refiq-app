@@ -9,6 +9,7 @@ from app.modules.ai.errors import AiError
 from app.modules.ai.safety.events import SecurityEvent, log_security_event
 from app.modules.ai.safety.local_guard import inspect_local
 from app.modules.ai.safety.operations import AiOperation, InputSource
+from app.modules.ai.safety.scope_guard import inspect_scope
 
 _META = re.compile(
     r"(ignore (previous|all|system) instructions|system prompt|developer message|"
@@ -55,4 +56,20 @@ class ImagePromptValidator:
             )
         ):
             raise AiError("AI_INVALID_RESPONSE", "Image prompt contained affiliate language", 502)
+        scope = inspect_scope(text, operation=AiOperation.GENERATE_IMAGE_PROMPT)
+        if not scope.allowed and scope.invalid_intents:
+            log_security_event(
+                SecurityEvent.PROMPT_SCOPE_VIOLATION
+                if scope.category != "MIXED_VALID_AND_INVALID_GUIDANCE"
+                else SecurityEvent.MIXED_GUIDANCE_REJECTED,
+                operation=AiOperation.GENERATE_IMAGE_PROMPT,
+                source=InputSource.IMAGE_PROMPT,
+                category=scope.category,
+                accepted=False,
+                user_id=user_id,
+                offer_id=offer_id,
+                payload=text,
+                extra={"blocked_stage": "SCOPE_GUARD", "invalid_intents": list(scope.invalid_intents)},
+            )
+            raise AiError("AI_INVALID_RESPONSE", "Image prompt contained disallowed instructions", 502)
         return text

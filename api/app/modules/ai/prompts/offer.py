@@ -3,7 +3,7 @@ from app.modules.ai.safety.trusted_prompt import untrusted_data_policy
 
 CREATE_V1 = "offer-create-v4"
 EDIT_V1 = "offer-edit-v3"
-REWRITE_V1 = "offer-field-rewrite-v3"
+REWRITE_V1 = "offer-field-rewrite-v6"
 
 _SHARED_RULES = f"""
 Вы помогаете бизнесу создать или отредактировать оффер RefIQ для партнёрской программы продаж.
@@ -51,6 +51,7 @@ def rewrite_system_prompt(operation: AiOperation | str | None = None) -> str:
 Версия промпта: {REWRITE_V1}
 {untrusted_data_policy(op)}
 Перепишите только запрошенное текстовое поле. Не меняйте никакие другие поля оффера.
-Следуйте trusted preset и недоверенному USER_GUIDANCE (короче, понятнее, более продающе, смена тона или своё уточнение).
+Следуйте только trusted preset из серверного запроса (короче, понятнее, более продающе, структура, без повторов, тон).
+Пользовательская произвольная инструкция отсутствует: не добавляйте факты, числа, цены, скидки, даты, URL или утверждения вне VERIFIED_CONTEXT.
 Верните только новое значение этого поля.
 """
