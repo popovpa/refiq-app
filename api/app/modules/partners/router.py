@@ -3,9 +3,10 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from app.core.ids import parse_id
 
+from app.common.date_range import resolve_query_range
 from app.core.database import get_db
 from app.core.permissions import require_partner_role
 from app.core.exceptions import ConflictError, ForbiddenError, NotFoundError
@@ -17,6 +18,12 @@ from app.modules.offers.service import cr as conversion_rate, offer_public_field
 from app.modules.commissions.models import Commission
 from app.modules.payouts.models import Payout
 from app.modules.users.models import User
+from app.modules.promotion.ownership import (
+    OWN_OFFER_MARKETPLACE_STATUSES,
+    assert_not_own_offer_for_partner_flow,
+    is_own_offer,
+    user_owned_business_ids,
+)
 
 router = APIRouter()
 
@@ -124,9 +131,14 @@ async def _partner_promotions(db: AsyncSession, partner_id: int, offer_ids: list
 async def partner_dashboard(
     session_data: dict = Depends(require_partner_role),
     db: AsyncSession = Depends(get_db),
+    date_from: datetime | None = Query(default=None, alias="from"),
+    date_to: datetime | None = Query(default=None, alias="to"),
+    timezone_name: str | None = Query(default=None, alias="timezone"),
+    days: int | None = Query(default=None, ge=1, le=366),
 ):
     user_id = session_data["user_id"]
     profile = await _get_partner_profile(user_id, db)
+    date_range = resolve_query_range(date_from, date_to, timezone_name, days)
 
     offers_count = await db.scalar(
         select(func.count(OfferPartnerAccess.id)).where(
@@ -141,12 +153,18 @@ async def partner_dashboard(
         )
     )
     conversions_count = await db.scalar(
-        select(func.count(Conversion.id)).where(Conversion.partner_id == profile.id)
+        select(func.count(Conversion.id)).where(
+            Conversion.partner_id == profile.id,
+            Conversion.created_at >= date_range.start,
+            Conversion.created_at <= date_range.end,
+        )
     )
     earnings = await db.scalar(
         select(func.coalesce(func.sum(Commission.amount), 0)).where(
             Commission.partner_id == profile.id,
             Commission.status.in_(["approved", "payable", "paid"]),
+            Commission.created_at >= date_range.start,
+            Commission.created_at <= date_range.end,
         )
     )
     pending_payout = await db.scalar(
@@ -159,9 +177,13 @@ async def partner_dashboard(
     return {
         "active_offers": offers_count or 0,
         "active_links": links_count or 0,
+        "has_offers": bool(offers_count),
         "total_conversions": conversions_count or 0,
         "total_earnings": float(earnings or 0),
         "pending_payout": float(pending_payout or 0),
+        "from": date_range.start.isoformat(),
+        "to": date_range.end.isoformat(),
+        "timezone": date_range.timezone,
     }
 
 
@@ -172,9 +194,16 @@ class JoinOfferRequest(BaseModel):
     geo: str | None = None
 
 
-def _serialize_partner_offer(offer: Offer, partner_status: str | None, stats: dict | None = None) -> dict:
+def _serialize_partner_offer(
+    offer: Offer,
+    partner_status: str | None,
+    stats: dict | None = None,
+    *,
+    owned_business_ids: set[int] | None = None,
+) -> dict:
     payload = offer_public_fields(offer)
     payload["partner_status"] = partner_status
+    payload["is_own_offer"] = bool(owned_business_ids and is_own_offer(offer, owned_business_ids))
     if stats:
         payload.update(
             {
@@ -196,6 +225,7 @@ async def partner_my_offers(
 ):
     user_id = session_data["user_id"]
     profile = await _get_partner_profile(user_id, db)
+    owned_business_ids = await user_owned_business_ids(db, user_id)
 
     query = (
         select(OfferPartnerAccess, Offer)
@@ -209,7 +239,7 @@ async def partner_my_offers(
     items = []
     for access, offer in result.all():
         stats = await offer_stats(db, offer.id, partner_id=profile.id)
-        item = _serialize_partner_offer(offer, access.status, stats)
+        item = _serialize_partner_offer(offer, access.status, stats, owned_business_ids=owned_business_ids)
         items.append(item)
 
     promotions = await _partner_promotions(db, profile.id, [item["id"] for item in items])
@@ -232,8 +262,19 @@ async def partner_marketplace(
 ):
     user_id = session_data["user_id"]
     profile = await _get_partner_profile(user_id, db)
+    owned_business_ids = await user_owned_business_ids(db, user_id)
 
-    filters = [Offer.status == "active", Offer.visibility == "public"]
+    public_active = and_(Offer.status == "active", Offer.visibility == "public")
+    if owned_business_ids:
+        own_visible = and_(
+            Offer.business_id.in_(owned_business_ids),
+            Offer.status.in_(OWN_OFFER_MARKETPLACE_STATUSES),
+        )
+        visibility = or_(public_active, own_visible)
+    else:
+        visibility = public_active
+
+    filters = [visibility]
     if q:
         filters.append(Offer.name.ilike(f"%{q.strip()}%"))
     if category:
@@ -260,7 +301,14 @@ async def partner_marketplace(
     items = []
     for offer in offers:
         stats = await offer_stats(db, offer.id)
-        items.append(_serialize_partner_offer(offer, access_map.get(offer.id), stats))
+        items.append(
+            _serialize_partner_offer(
+                offer,
+                access_map.get(offer.id),
+                stats,
+                owned_business_ids=owned_business_ids,
+            )
+        )
 
     promotions = await _partner_promotions(db, profile.id, [offer.id for offer in offers])
     for item in items:
@@ -276,6 +324,7 @@ async def partner_offer_detail(
     db: AsyncSession = Depends(get_db),
 ):
     profile = await _get_partner_profile(session_data["user_id"], db)
+    owned_business_ids = await user_owned_business_ids(db, session_data["user_id"])
     offer = (
         await db.execute(select(Offer).where(Offer.id == parse_id(offer_id)))
     ).scalar_one_or_none()
@@ -290,16 +339,24 @@ async def partner_offer_detail(
             )
         )
     ).scalar_one_or_none()
-    visible = offer.status == "active" and offer.visibility == "public"
-    if not visible and (not access or access.status not in {"approved", "pending"}):
+    own = is_own_offer(offer, owned_business_ids)
+    public_active = offer.status == "active" and offer.visibility == "public"
+    own_visible = own and offer.status in OWN_OFFER_MARKETPLACE_STATUSES
+    access_visible = bool(access and access.status in {"approved", "pending"})
+    if not public_active and not own_visible and not access_visible:
         raise NotFoundError("Offer")
 
     stats = await offer_stats(db, offer.id)
     mine = await offer_stats(db, offer.id, partner_id=profile.id) if access and access.status == "approved" else None
-    payload = _serialize_partner_offer(offer, access.status if access else None, stats)
+    payload = _serialize_partner_offer(
+        offer,
+        access.status if access else None,
+        stats,
+        owned_business_ids=owned_business_ids,
+    )
     payload["my_stats"] = mine
     payload["application"] = None
-    if access:
+    if access and not own:
         payload["application"] = {
             "status": access.status,
             "comment": access.comment,
@@ -326,11 +383,13 @@ async def join_offer(
     data: JoinOfferRequest = Body(default_factory=JoinOfferRequest),
 ):
     profile = await _get_partner_profile(session_data["user_id"], db)
+    owned_business_ids = await user_owned_business_ids(db, session_data["user_id"])
     offer = (
         await db.execute(select(Offer).where(Offer.id == parse_id(offer_id), Offer.status == "active"))
     ).scalar_one_or_none()
     if not offer:
         raise NotFoundError("Offer")
+    assert_not_own_offer_for_partner_flow(offer, owned_business_ids)
     if offer.access_policy == "invite_only":
         raise ForbiddenError("This offer is available by invitation only")
 
@@ -416,19 +475,26 @@ async def cancel_offer_request(
 async def list_partner_conversions(
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
+    date_from: datetime | None = Query(default=None, alias="from"),
+    date_to: datetime | None = Query(default=None, alias="to"),
+    timezone_name: str | None = Query(default=None, alias="timezone"),
     session_data: dict = Depends(require_partner_role),
     db: AsyncSession = Depends(get_db),
 ):
     user_id = session_data["user_id"]
     profile = await _get_partner_profile(user_id, db)
+    filters = [Conversion.partner_id == profile.id]
+    if date_from is not None and date_to is not None:
+        date_range = resolve_query_range(date_from, date_to, timezone_name, None)
+        filters.extend(
+            [Conversion.created_at >= date_range.start, Conversion.created_at <= date_range.end]
+        )
 
-    total = await db.scalar(
-        select(func.count(Conversion.id)).where(Conversion.partner_id == profile.id)
-    )
+    total = await db.scalar(select(func.count(Conversion.id)).where(*filters))
     result = await db.execute(
         select(Conversion, Offer.name.label("offer_name"))
         .join(Offer, Conversion.offer_id == Offer.id)
-        .where(Conversion.partner_id == profile.id)
+        .where(*filters)
         .order_by(Conversion.created_at.desc())
         .offset((page - 1) * per_page)
         .limit(per_page)

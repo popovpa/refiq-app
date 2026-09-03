@@ -31,6 +31,7 @@ from app.modules.ai.usage.models import AiUsage
 from app.admin.auth.models import AdminUser
 from app.admin.audit.models import AdminAuditEvent
 from app.modules.postback.attempt import PostbackAttempt
+from app.modules.notifications.models import Notification
 
 config = context.config
 

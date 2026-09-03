@@ -7,7 +7,7 @@ import { FORMAT_LABELS, STATUS_LABELS } from './labels';
 import type { Creative, PromoGenerationItem, PromoGenerationRun } from './types';
 
 const IMAGE_SLOT_META: Record<string, { formatLabel: string; count: number; qr: boolean }> = {
-  images_1_1: { formatLabel: '1:1', count: 2, qr: false },
+  images_1_1: { formatLabel: '1:1', count: 1, qr: false },
   images_16_9: { formatLabel: '16:9', count: 1, qr: false },
   images_9_16: { formatLabel: '9:16', count: 1, qr: false },
   images_qr: { formatLabel: '1:1', count: 1, qr: true },

@@ -1,10 +1,13 @@
 import type { OfferAiChange } from '@/shared/ai/types';
+import type { AiGuidancePresetId } from '@/shared/ai/presets';
+import { canSubmitAiGuidance } from '@/shared/ai/presets';
 
 export type OfferAiEditPhase = 'closed' | 'input' | 'loading' | 'review' | 'applied';
 
 export type OfferAiEditState = {
   phase: OfferAiEditPhase;
   instruction: string;
+  preset: AiGuidancePresetId | null;
   continueMode: boolean;
   changes: OfferAiChange[];
   selected: Record<number, boolean>;
@@ -16,6 +19,7 @@ export type OfferAiEditState = {
 export type OfferAiEditAction =
   | { type: 'OPEN' }
   | { type: 'SET_INSTRUCTION'; instruction: string }
+  | { type: 'SET_PRESET'; preset: AiGuidancePresetId | null }
   | { type: 'REQUEST' }
   | { type: 'SUCCESS'; changes: OfferAiChange[] }
   | { type: 'FAIL'; error: string }
@@ -31,6 +35,7 @@ export function createOfferAiEditState(open = false): OfferAiEditState {
   return {
     phase: open ? 'input' : 'closed',
     instruction: '',
+    preset: null,
     continueMode: false,
     changes: [],
     selected: {},
@@ -46,6 +51,10 @@ export function selectedSuggestionCount(state: OfferAiEditState): number {
 
 export function selectedSuggestions(state: OfferAiEditState): OfferAiChange[] {
   return state.changes.filter((_, index) => state.selected[index]);
+}
+
+export function canRequestOfferAiEdit(state: OfferAiEditState): boolean {
+  return state.phase === 'input' && canSubmitAiGuidance({ preset: state.preset, guidance: state.instruction });
 }
 
 function closedState(): OfferAiEditState {
@@ -64,8 +73,11 @@ export function offerAiEditReducer(state: OfferAiEditState, action: OfferAiEditA
     case 'SET_INSTRUCTION':
       if (state.phase !== 'input') return state;
       return { ...state, instruction: action.instruction, error: null };
+    case 'SET_PRESET':
+      if (state.phase !== 'input') return state;
+      return { ...state, preset: action.preset, error: null };
     case 'REQUEST':
-      if (state.phase !== 'input' || !state.instruction.trim()) return state;
+      if (!canRequestOfferAiEdit(state)) return state;
       return { ...state, phase: 'loading', error: null, confirmClose: false };
     case 'SUCCESS':
       if (state.phase !== 'loading') return state;
@@ -111,6 +123,7 @@ export function offerAiEditReducer(state: OfferAiEditState, action: OfferAiEditA
         ...state,
         phase: 'input',
         instruction: '',
+        preset: null,
         continueMode: true,
         error: null,
         appliedCount: 0,

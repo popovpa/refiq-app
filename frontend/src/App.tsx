@@ -25,6 +25,7 @@ import { PartnerConversions } from '@/pages/partner/Conversions';
 import { PartnerPayouts } from '@/pages/partner/Payouts';
 import { PartnerSettings } from '@/pages/partner/Settings';
 import { ProfilePage } from '@/pages/ProfilePage';
+import { NotificationsPage } from '@/pages/NotificationsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { ToastProvider } from '@/shared/components/Toast';
 
@@ -44,6 +45,7 @@ export default function App() {
         </Route>
         <Route element={<AppLayout />}>
           <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/notifications" element={<NotificationsPage />} />
           <Route path="/business" element={<BusinessDashboard />} />
           <Route path="/business/offers" element={<BusinessOffers />} />
           <Route path="/business/offers/new" element={<BusinessOfferNew />} />

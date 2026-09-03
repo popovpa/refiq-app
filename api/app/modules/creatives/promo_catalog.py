@@ -112,7 +112,7 @@ SLOTS: dict[str, PromoSlot] = {
         title="Изображение 1:1",
         image_format=BannerFormat.SQUARE_1_1.value,
         aspect_ratio="1:1",
-        image_count=2,
+        image_count=1,
     ),
     "images_16_9": PromoSlot(
         id="images_16_9",

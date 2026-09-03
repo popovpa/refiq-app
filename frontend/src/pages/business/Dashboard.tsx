@@ -18,6 +18,8 @@ import { StatCard } from '@/shared/components/StatCard';
 import { tabClass } from '@/shared/offers/labels';
 import { cn } from '@/shared/utils/cn';
 import { formatMoney, formatNumber } from '@/shared/utils/format';
+import { PageHeading } from '@/shared/dateRange/PageHeading';
+import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 import {
   postbackStatusClass,
   postbackStatusLabel,
@@ -28,6 +30,7 @@ import {
 
 interface DashboardData {
   period_days: number;
+  has_offers: boolean;
   kpis: {
     active_offers: number;
     active_partners: number;
@@ -117,9 +120,10 @@ function formatCr(value: number) {
 export function BusinessDashboard() {
   const navigate = useNavigate();
   const [metric, setMetric] = useState<'conversions' | 'sales'>('conversions');
+  const range = useDateRange();
   const { data, isLoading, isError, refetch } = useQuery<DashboardData>({
-    queryKey: ['business', 'dashboard', 7],
-    queryFn: () => api.get('/business/dashboard?days=7'),
+    queryKey: ['business', 'dashboard', range.apiParams],
+    queryFn: () => api.get(withDateRangeQuery('/business/dashboard', range)),
   });
 
   const chartData = useMemo(
@@ -136,7 +140,7 @@ export function BusinessDashboard() {
   if (isLoading) {
     return (
       <div className="flex flex-col flex-1 min-h-0 h-full gap-3 overflow-hidden">
-        <h1 className="ui-page-title shrink-0">Обзор</h1>
+        <PageHeading title="Обзор" dateRangeFilter="header" className="shrink-0" />
         <div className="grid grid-cols-2 xl:grid-cols-6 gap-3 shrink-0">
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-[88px] rounded-xl" />
@@ -164,7 +168,7 @@ export function BusinessDashboard() {
   if (isError) {
     return (
       <div className="space-y-5">
-        <h1 className="ui-page-title">Обзор</h1>
+        <PageHeading title="Обзор" dateRangeFilter="header" />
         <EmptyState
           title="Не удалось загрузить обзор"
           description="Попробуйте обновить данные. Остальные разделы доступны в меню."
@@ -174,15 +178,18 @@ export function BusinessDashboard() {
     );
   }
 
-  const isEmpty = !data?.kpis.active_offers && !data?.kpis.active_partners && !data?.kpis.conversions;
-  if (isEmpty) {
+  if (!data) {
+    return null;
+  }
+
+  if (!data.has_offers) {
     return (
       <div className="space-y-5">
-        <h1 className="ui-page-title">Обзор</h1>
+        <PageHeading title="Обзор" dateRangeFilter="none" />
         <EmptyState
           title="Создайте первый оффер"
           description="Опишите продукт, условия партнёрской программы и начните подключать партнёров."
-          action={{ label: 'Создать оффер', onClick: () => navigate('/business/offers/new') }}
+          action={{ label: 'Создать оффер', onClick: () => navigate('/business/offers/new?ai=1') }}
         />
       </div>
     );
@@ -192,7 +199,7 @@ export function BusinessDashboard() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full gap-3 max-lg:overflow-auto lg:overflow-hidden">
-      <h1 className="ui-page-title shrink-0">Обзор</h1>
+      <PageHeading title="Обзор" dateRangeFilter="header" className="shrink-0" />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 shrink-0">
         <StatCard
@@ -306,7 +313,7 @@ export function BusinessDashboard() {
                           <div className="min-w-0">
                             <p className="text-sm font-medium truncate">{item.offer_name}</p>
                             <p className="text-xs text-muted-foreground truncate">
-                              {item.partner_name} · {formatDateTime(item.created_at)}
+                              {item.partner_name || 'Свой трафик'} · {formatDateTime(item.created_at)}
                             </p>
                           </div>
                           <div className="text-right shrink-0">

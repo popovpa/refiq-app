@@ -205,6 +205,8 @@ def _product_context(offer: Offer, product: Product | None) -> dict[str, Any]:
     facts = [item for item in [name, description, offer.category, offer.geo, landing] if item]
     limited = len((description or "").strip()) < 24
     return {
+        "trust": "UNTRUSTED",
+        "source": "OFFER_FIELD",
         "name": name,
         "description": description,
         "category": offer.category,

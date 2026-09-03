@@ -2,6 +2,7 @@ import { type KeyboardEvent } from 'react';
 import { Button } from '@/shared/components/Button';
 import { OfferImage } from '@/shared/offers/OfferImage';
 import { conversionLabel } from '@/shared/offers/labels';
+import { OWN_OFFER_PROMOTE_PENDING_LABEL } from '@/shared/offers/promoteOwnOffer';
 import type { OfferListItem } from '@/shared/offers/types';
 import {
   accessBadge,
@@ -19,12 +20,14 @@ interface PartnerOfferCardProps {
   joined: boolean;
   pending: boolean;
   joinPending: boolean;
+  promoteOwnPending?: boolean;
   onOpen: (offerId: OfferListItem['id']) => void;
   onGetLink: (offer: OfferListItem) => void;
   onOpenLinks: (offer: OfferListItem) => void;
   onJoinOpen: (offer: OfferListItem) => void;
   onRequestAccess: (offer: OfferListItem) => void;
   onCancelRequest: (offerId: OfferListItem['id']) => void;
+  onPromoteOwn?: (offer: OfferListItem) => void;
 }
 
 export function PartnerOfferCard({
@@ -32,12 +35,14 @@ export function PartnerOfferCard({
   joined,
   pending,
   joinPending,
+  promoteOwnPending = false,
   onOpen,
   onGetLink,
   onOpenLinks,
   onJoinOpen,
   onRequestAccess,
   onCancelRequest,
+  onPromoteOwn,
 }: PartnerOfferCardProps) {
   const rule = offer.commission_rules?.[0];
   const access = accessBadge(offer.access_policy);
@@ -46,9 +51,11 @@ export function PartnerOfferCard({
   const promotionStatus = offer.promotion_status || 'NOT_STARTED';
   const activeLinks = offer.active_links_count ?? 0;
   const totalLinks = offer.total_links_count ?? 0;
-  const isPromoting = joined && promotionStatus === 'ACTIVE';
-  const isPaused = joined && promotionStatus === 'PAUSED';
-  const canCreateLink = joined && offer.status === 'active';
+  const isOwn = Boolean(offer.is_own_offer);
+  const offerPaused = offer.status === 'paused';
+  const isPromoting = !isOwn && joined && promotionStatus === 'ACTIVE';
+  const isPaused = !isOwn && joined && promotionStatus === 'PAUSED';
+  const canCreateLink = !isOwn && joined && offer.status === 'active';
   const myStats = formatPartnerPromotionStats(offer);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -79,7 +86,20 @@ export function PartnerOfferCard({
       <div className="flex items-start gap-3">
         <OfferImage src={offer.image_url} name={offer.name} size="md" />
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-[15px] leading-snug truncate">{offer.name}</h3>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <h3 className="font-semibold text-[15px] leading-snug truncate">{offer.name}</h3>
+            {isOwn && (
+              <span
+                className="ui-badge shrink-0 bg-brand-soft text-brand"
+                title="Оффер создан вашим бизнесом."
+              >
+                Ваш оффер
+              </span>
+            )}
+            {isOwn && offerPaused && (
+              <span className="ui-badge shrink-0 bg-yellow-50 text-yellow-700">Приостановлен</span>
+            )}
+          </div>
           {offer.category && (
             <p className="text-xs text-muted-foreground mt-0.5">{offer.category}</p>
           )}
@@ -113,8 +133,8 @@ export function PartnerOfferCard({
 
       <div className="mt-2.5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2.5">
         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-          <span className={cn('ui-badge shrink-0', access.className)}>{access.label}</span>
-          {pending && (
+          {!isOwn && <span className={cn('ui-badge shrink-0', access.className)}>{access.label}</span>}
+          {!isOwn && pending && (
             <span className="ui-badge bg-yellow-50 text-yellow-700">Заявка рассматривается</span>
           )}
         </div>
@@ -145,7 +165,24 @@ export function PartnerOfferCard({
           )}
 
           <div className="flex flex-wrap items-center justify-end gap-2 min-h-8">
-            {joined && (isPromoting || isPaused) && (
+            {isOwn && offer.status === 'active' && (
+              <Button
+                size="sm"
+                disabled={promoteOwnPending}
+                onClick={(event) => {
+                  stopCardActivation(event);
+                  onPromoteOwn?.(offer);
+                }}
+              >
+                {promoteOwnPending ? OWN_OFFER_PROMOTE_PENDING_LABEL : 'Продвигать свой оффер'}
+              </Button>
+            )}
+            {isOwn && offerPaused && (
+              <Button size="sm" disabled title="Оффер приостановлен">
+                Продвижение недоступно
+              </Button>
+            )}
+            {!isOwn && joined && (isPromoting || isPaused) && (
               <>
                 <Button
                   size="sm"
@@ -171,7 +208,7 @@ export function PartnerOfferCard({
                 )}
               </>
             )}
-            {joined && !isPromoting && !isPaused && (
+            {!isOwn && joined && !isPromoting && !isPaused && (
               <Button
                 size="sm"
                 onClick={(event) => {
@@ -182,7 +219,7 @@ export function PartnerOfferCard({
                 Получить ссылку
               </Button>
             )}
-            {pending && (
+            {!isOwn && pending && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -194,7 +231,7 @@ export function PartnerOfferCard({
                 Отменить заявку
               </Button>
             )}
-            {!joined && !pending && offer.access_policy === 'open' && (
+            {!isOwn && !joined && !pending && offer.access_policy === 'open' && (
               <Button
                 size="sm"
                 onClick={(event) => {
@@ -206,7 +243,7 @@ export function PartnerOfferCard({
                 Получить ссылку
               </Button>
             )}
-            {!joined && !pending && offer.access_policy === 'approval' && (
+            {!isOwn && !joined && !pending && offer.access_policy === 'approval' && (
               <Button
                 size="sm"
                 onClick={(event) => {

@@ -32,6 +32,7 @@ export interface OfferListItem {
   forbidden_traffic?: string[];
   partner_notes?: string | null;
   attribution_window_days?: number;
+  is_own_offer?: boolean;
 }
 
 export interface OfferFormValues {
@@ -50,6 +51,8 @@ export interface OfferFormValues {
   forbidden_traffic: string[];
   partner_notes: string;
   product_url: string;
+  restrictions_custom: string;
+  selected_restrictions: string[];
 }
 
 export const emptyOfferForm = (): OfferFormValues => ({
@@ -68,7 +71,32 @@ export const emptyOfferForm = (): OfferFormValues => ({
   forbidden_traffic: [],
   partner_notes: '',
   product_url: '',
+  restrictions_custom: '',
+  selected_restrictions: [],
 });
+
+/** Пустая форма для wizard создания — без предзаполненных значений, влияющих на checklist. */
+export const blankOfferForm = (): OfferFormValues => ({
+  name: '',
+  category: '',
+  image_url: null,
+  description: '',
+  conversion_type: '',
+  commission_type: 'percent',
+  commission_value: '',
+  commission_currency: 'RUB',
+  attribution_window_days: '',
+  access_policy: 'open',
+  geo: '',
+  allowed_traffic: [],
+  forbidden_traffic: [],
+  partner_notes: '',
+  product_url: '',
+  restrictions_custom: '',
+  selected_restrictions: [],
+});
+
+import { buildPartnerNotes } from '@/shared/offers/wizard/meta';
 
 export function formToPayload(form: OfferFormValues, status: string) {
   return {
@@ -86,7 +114,7 @@ export function formToPayload(form: OfferFormValues, status: string) {
     visibility: 'public',
     allowed_traffic: form.allowed_traffic,
     forbidden_traffic: form.forbidden_traffic,
-    partner_notes: form.partner_notes.trim() || null,
+    partner_notes: buildPartnerNotes(form),
     product_url: form.product_url.trim() || null,
     status,
   };

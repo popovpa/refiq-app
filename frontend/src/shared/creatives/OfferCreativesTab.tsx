@@ -75,6 +75,19 @@ export function OfferCreativesTab({
     queryFn: () => api.get(`/business/offers/${offerId}`),
     enabled: kitOpen || variant === 'full',
   });
+  const ownLinksQuery = useQuery<{ items: Array<{
+    id: number;
+    name?: string | null;
+    url: string;
+    short_code: string;
+    destination_url: string;
+    status: string;
+    stats?: { clicks: number; conversions: number };
+  }> }>({
+    queryKey: ['business', 'offers', offerId, 'own-links'],
+    queryFn: () => api.get(`/business/offers/${offerId}/links`),
+    enabled: kitOpen || variant === 'full',
+  });
 
   const activeQuery = useQuery<{ run: PromoGenerationRun | null }>({
     queryKey: ['business', 'offers', offerId, 'promo-generation-active'],
@@ -104,7 +117,20 @@ export function OfferCreativesTab({
   const catalog = catalogQuery.data?.items || [];
   const recommended =
     catalogQuery.data?.recommended || catalog.filter((item) => item.recommended).map((item) => item.id);
-  const promoLinks = offerQuery.data?.promotion_links || [];
+  const promoLinks = [
+    ...(offerQuery.data?.promotion_links || []),
+    ...(ownLinksQuery.data?.items || []).map((link) => ({
+      id: link.id,
+      name: link.name || 'Своя ссылка',
+      url: link.url,
+      short_code: link.short_code,
+      destination_url: link.destination_url,
+      partner_name: 'Свой трафик',
+      status: link.status,
+      clicks: link.stats?.clicks || 0,
+      conversions: link.stats?.conversions || 0,
+    })),
+  ];
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['business', 'offers', offerId, 'creatives'] });

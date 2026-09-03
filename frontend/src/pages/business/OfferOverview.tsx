@@ -107,10 +107,12 @@ export function offerKpiTrends(timeseries: BusinessOfferDetailData['timeseries']
 
 export function OfferOverview({
   offer,
+  ownLinks = [],
   onOpenPartners,
   onOpenPromotion,
 }: {
   offer: BusinessOfferDetailData;
+  ownLinks?: Array<{ status: string; clicks?: number }>;
   onOpenPartners: (filter?: 'all' | 'approved' | 'pending') => void;
   onOpenPromotion: () => void;
 }) {
@@ -129,9 +131,11 @@ export function OfferOverview({
       : null;
   const hasChartData = offer.timeseries.some((item) => item.clicks > 0 || item.conversions > 0);
   const chartData = offer.timeseries.map((item) => ({ ...item, label: formatDay(item.date) }));
-  const activeLinks = offer.promotion_links.filter((link) => isActiveLink(link.status));
-  const linksWithClicks = activeLinks.filter((link) => link.clicks > 0).length;
-  const linksWithoutClicks = activeLinks.filter((link) => link.clicks === 0).length;
+  const activePartnerLinks = offer.promotion_links.filter((link) => isActiveLink(link.status));
+  const activeOwnLinks = ownLinks.filter((link) => isActiveLink(link.status));
+  const activeLinks = [...activePartnerLinks, ...activeOwnLinks];
+  const linksWithClicks = activeLinks.filter((link) => (link.clicks || 0) > 0).length;
+  const linksWithoutClicks = activeLinks.filter((link) => (link.clicks || 0) === 0).length;
   const pendingCount = offer.pending_applications.length;
   const topPartners = offer.top_partners.slice(0, 5);
   const crTrend = offerKpiTrends(offer.timeseries).cr;
@@ -347,6 +351,12 @@ export function OfferOverview({
           <h2 className="ui-section-title mb-1">Продвижение</h2>
           <MetricRow label="Активные партнёры" value={formatNumber(offer.active_partners)} />
           <MetricRow label="Активные ссылки" value={formatNumber(offer.active_links)} />
+          {offer.traffic_split && (
+            <>
+              <MetricRow label="Свои клики" value={formatNumber(offer.traffic_split.own.clicks)} />
+              <MetricRow label="Партнёрские клики" value={formatNumber(offer.traffic_split.partner.clicks)} />
+            </>
+          )}
           <MetricRow label="Ссылки с кликами" value={formatNumber(linksWithClicks)} />
           <MetricRow label="Ссылки без кликов" value={formatNumber(linksWithoutClicks)} />
         </section>

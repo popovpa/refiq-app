@@ -11,6 +11,7 @@ const MESSAGES: Record<string, string> = {
   AI_UNAUTHORIZED: 'Провайдер AI отклонил запрос.',
   AI_CAPABILITY_UNAVAILABLE: 'Эта возможность AI пока недоступна.',
   AI_FIELD_NOT_SUPPORTED: 'Это поле нельзя улучшить с помощью AI.',
+  INVALID_AI_GUIDANCE: 'Пожелание должно относиться к редактированию текущего материала.',
   CREATIVE_CONTENT_BLOCKED: 'Материал нарушает правила продвижения. Исправьте текст перед публикацией.',
   CREATIVE_TYPE_INVALID: 'Этот тип материала пока недоступен.',
   CREATIVE_IMAGE_EDIT_UNAVAILABLE: 'Редактирование баннера с AI пока недоступно.',

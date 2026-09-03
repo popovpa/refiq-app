@@ -3,10 +3,12 @@ import { CheckCircle2, Sparkles, X } from 'lucide-react';
 import { Button } from '@/shared/components/Button';
 import { formatOfferAiValue, OFFER_AI_FIELD_LABELS } from '@/shared/ai/format';
 import {
+  canRequestOfferAiEdit,
   selectedSuggestionCount,
   type OfferAiEditAction,
   type OfferAiEditState,
 } from '@/shared/ai/offerEditSession';
+import { AI_GUIDANCE_PRESETS } from '@/shared/ai/presets';
 import type { OfferAiChange } from '@/shared/ai/types';
 
 const LONG_FIELDS = new Set(['description', 'partner_notes']);
@@ -68,14 +70,37 @@ function InputState({
 }) {
   return (
     <>
+      <div className="space-y-2">
+        <p className="ui-label">Что улучшить</p>
+        <div className="flex flex-wrap gap-1.5">
+          {AI_GUIDANCE_PRESETS.map((item) => {
+            const active = state.preset === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                disabled={loading}
+                className={
+                  active
+                    ? 'px-2 py-1 rounded-md text-[12px] border border-primary bg-brand-soft text-brand'
+                    : 'px-2 py-1 rounded-md text-[12px] border border-border hover:bg-muted'
+                }
+                onClick={() => dispatch({ type: 'SET_PRESET', preset: active ? null : item.id })}
+              >
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
       <label className="block">
-        <span className="ui-label">Что хотите изменить?</span>
+        <span className="ui-label">Дополнительное пожелание</span>
         <textarea
-          className="ui-input min-h-[88px] h-auto py-2 resize-y"
+          className="ui-input min-h-[72px] h-auto py-2 resize-y"
           placeholder={
             state.continueMode
-              ? 'Что изменить ещё?'
-              : 'Например: сделай оффер более подходящим для продвижения через Telegram. Комиссию не меняй.'
+              ? 'Уточните, что изменить ещё'
+              : 'Например: сделай акцент на расположении клиники'
           }
           value={state.instruction}
           readOnly={loading}
@@ -102,7 +127,7 @@ function InputState({
         </Button>
         <Button
           type="button"
-          disabled={loading || !state.instruction.trim()}
+          disabled={loading || !canRequestOfferAiEdit(state)}
           onClick={onRequest}
         >
           {state.error ? 'Попробовать ещё раз' : 'Получить предложения'}

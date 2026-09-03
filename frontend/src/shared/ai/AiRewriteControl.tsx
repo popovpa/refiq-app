@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import { Button } from '@/shared/components/Button';
-
-const PRESETS = [
-  { id: 'shorter', label: 'Сделать короче', instruction: 'Сделай короче, сохрани смысл.' },
-  { id: 'clearer', label: 'Сделать понятнее', instruction: 'Сделай понятнее и конкретнее.' },
-  { id: 'selling', label: 'Сделать более продающим', instruction: 'Сделай более продающим для партнёров.' },
-  { id: 'tone', label: 'Изменить тон', instruction: 'Сделай тон спокойнее и деловым.' },
-];
+import {
+  AI_REWRITE_PRESETS,
+  canSubmitAiGuidance,
+  type AiGuidancePresetId,
+  type AiGuidanceRequest,
+} from '@/shared/ai/presets';
 
 export function AiRewriteControl({
   pending,
@@ -20,12 +19,19 @@ export function AiRewriteControl({
   pending: boolean;
   error: string | null;
   proposed: string | null;
-  onGenerate: (instruction: string) => void;
+  onGenerate: (request: AiGuidanceRequest) => void;
   onAccept: () => void;
   onCancel: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [preset, setPreset] = useState<AiGuidancePresetId | undefined>();
   const [custom, setCustom] = useState('');
+
+  const submit = (next?: AiGuidanceRequest) => {
+    const request = next ?? { preset, guidance: custom.trim() || undefined };
+    if (!canSubmitAiGuidance(request)) return;
+    onGenerate(request);
+  };
 
   return (
     <div className="relative shrink-0">
@@ -45,21 +51,32 @@ export function AiRewriteControl({
             Улучшить текст
           </p>
           <div className="flex flex-wrap gap-1">
-            {PRESETS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                disabled={pending}
-                className="px-2 py-1 rounded-md text-[11px] border border-border hover:bg-muted"
-                onClick={() => onGenerate(item.instruction)}
-              >
-                {item.label}
-              </button>
-            ))}
+            {AI_REWRITE_PRESETS.map((item) => {
+              const active = preset === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={pending}
+                  className={
+                    active
+                      ? 'px-2 py-1 rounded-md text-[11px] border border-primary bg-brand-soft text-brand'
+                      : 'px-2 py-1 rounded-md text-[11px] border border-border hover:bg-muted'
+                  }
+                  onClick={() => {
+                    const next = active ? undefined : item.id;
+                    setPreset(next);
+                    if (!custom.trim()) submit({ preset: next, guidance: undefined });
+                  }}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
           <textarea
             className="ui-input min-h-[64px] h-auto py-1.5 text-xs resize-y"
-            placeholder="Своя инструкция"
+            placeholder="Дополнительное пожелание"
             value={custom}
             disabled={pending}
             onChange={(e) => setCustom(e.target.value)}
@@ -71,8 +88,8 @@ export function AiRewriteControl({
             <Button
               type="button"
               size="sm"
-              disabled={pending || !custom.trim()}
-              onClick={() => onGenerate(custom.trim())}
+              disabled={pending || !canSubmitAiGuidance({ preset, guidance: custom })}
+              onClick={() => submit()}
             >
               {pending ? 'Генерация...' : 'Применить'}
             </Button>

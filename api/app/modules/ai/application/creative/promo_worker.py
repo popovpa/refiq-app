@@ -65,7 +65,7 @@ async def start_promo_kit(
     if existing:
         raise AppError("PROMO_GENERATION_IN_PROGRESS", "Promo generation is already running", 409)
 
-    snapshot = await build_offer_snapshot(db, offer)
+    snapshot = await build_offer_snapshot(db, offer, user_id=user_id)
     run = OfferPromoGenerationRun(
         offer_id=offer.id,
         created_by_user_id=user_id,

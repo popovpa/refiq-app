@@ -12,6 +12,7 @@ from app.core.exceptions import AppError
 from app.core.security import hash_password, verify_password
 from app.modules.users.models import User, UserRole
 from app.modules.businesses.models import Business, BusinessMembership
+from app.modules.offers.models import Offer
 from app.modules.partners.models import PartnerProfile
 from app.modules.system.models import UserSettings, PartnerSettings, BusinessSettings
 from app.modules.auth.schemas import SessionResponse
@@ -43,6 +44,8 @@ class ChangePasswordRequest(BaseModel):
 
 class ContextSwitchRequest(BaseModel):
     role: str = Field(pattern="^(business|partner)$")
+    offer_id: int | None = None
+    business_id: int | None = None
 
 
 class AddBusinessRoleRequest(BaseModel):
@@ -126,15 +129,51 @@ async def _active_business_id(db: AsyncSession, user_id: int) -> str | None:
     return str(membership.business_id) if membership else None
 
 
-async def _set_workspace(request: Request, db: AsyncSession, user_id: str, role: str) -> dict:
+async def _require_business_membership(db: AsyncSession, user_id: int, business_id: int) -> str:
+    membership = (
+        await db.execute(
+            select(BusinessMembership.id).where(
+                BusinessMembership.user_id == user_id,
+                BusinessMembership.business_id == business_id,
+                BusinessMembership.status == "active",
+            )
+        )
+    ).scalar_one_or_none()
+    if not membership:
+        raise AppError(code="BUSINESS_NOT_FOUND", message="Business not available", status_code=403)
+    return str(business_id)
+
+
+async def _business_id_for_owned_offer(db: AsyncSession, user_id: int, offer_id: int) -> str:
+    offer = (await db.execute(select(Offer).where(Offer.id == offer_id))).scalar_one_or_none()
+    if not offer:
+        raise AppError(code="OFFER_NOT_FOUND", message="Offer not found", status_code=404)
+    return await _require_business_membership(db, user_id, offer.business_id)
+
+
+async def _set_workspace(
+    request: Request,
+    db: AsyncSession,
+    user_id: str,
+    role: str,
+    *,
+    offer_id: int | None = None,
+    business_id: int | None = None,
+) -> dict:
     session_id = request.cookies.get(settings.SESSION_COOKIE_NAME)
     updates: dict = {"active_role": role}
+    parsed_user_id = parse_id(user_id)
     if role == "business":
-        updates["active_business_id"] = await _active_business_id(db, parse_id(user_id))
+        if offer_id is not None:
+            updates["active_business_id"] = await _business_id_for_owned_offer(db, parsed_user_id, offer_id)
+        elif business_id is not None:
+            updates["active_business_id"] = await _require_business_membership(db, parsed_user_id, business_id)
+        else:
+            updates["active_business_id"] = await _active_business_id(db, parsed_user_id)
     else:
         updates["active_business_id"] = None
 
-    await _upsert_user_settings(db, parse_id(user_id), {"last_active_role": role})
+    await _upsert_user_settings(db, parsed_user_id, {"last_active_role": role})
     session_data = await update_session(session_id, updates)
     if session_data is None:
         raise AppError(code="SESSION_EXPIRED", message="Session expired", status_code=401)
@@ -258,7 +297,14 @@ async def switch_context(
     if not role:
         raise AppError(code="ROLE_NOT_FOUND", message="Role not available", status_code=403)
 
-    session_data = await _set_workspace(request, db, user_id, data.role)
+    session_data = await _set_workspace(
+        request,
+        db,
+        user_id,
+        data.role,
+        offer_id=data.offer_id,
+        business_id=data.business_id,
+    )
     user_result = await db.execute(select(User).where(User.id == parse_id(user_id)))
     return await _session_response(db, user_result.scalar_one(), session_data)
 

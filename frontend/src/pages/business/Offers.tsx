@@ -81,7 +81,7 @@ export function BusinessOffers() {
             {
               id: 'manual',
               label: 'Создать вручную',
-              onSelect: () => navigate('/business/offers/new'),
+              onSelect: () => navigate('/business/offers/new?manual=1'),
             },
           ]}
         />
@@ -130,7 +130,7 @@ export function BusinessOffers() {
         <EmptyState
           title="Офферов пока нет"
           description="Создайте первый оффер, чтобы партнёры могли начать продвигать ваш продукт."
-          action={{ label: 'Создать оффер', onClick: () => navigate('/business/offers/new') }}
+          action={{ label: 'Создать оффер', onClick: () => navigate('/business/offers/new?ai=1') }}
         />
       ) : (
         <div className="ui-card overflow-x-auto">

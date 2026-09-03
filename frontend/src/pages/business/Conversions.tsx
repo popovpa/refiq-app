@@ -7,13 +7,16 @@ import { Button } from '@/shared/components/Button';
 import { useToast } from '@/shared/components/Toast';
 import { cn } from '@/shared/utils/cn';
 import { formatMoney } from '@/shared/utils/format';
+import { DateRangeSelector } from '@/shared/dateRange/DateRangeSelector';
+import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 
 interface Conversion {
   id: string;
   offer_id: string;
   offer_name?: string | null;
-  partner_id: string;
+  partner_id: string | null;
   partner_name?: string | null;
+  source_owner?: 'business' | 'partner' | null;
   campaign_name?: string | null;
   click_id: string | null;
   external_id: string | null;
@@ -38,6 +41,12 @@ const tabs = [
   { key: 'paid', label: 'Выплачены' },
 ];
 
+const sourceTabs = [
+  { key: 'all', label: 'Все источники' },
+  { key: 'partner', label: 'Партнёрский' },
+  { key: 'business', label: 'Свой трафик' },
+];
+
 const statusLabels: Record<string, { label: string; className: string }> = {
   pending: { label: 'Ожидание', className: 'bg-yellow-50 text-yellow-700' },
   approved: { label: 'Одобрена', className: 'bg-accent text-primary' },
@@ -47,15 +56,22 @@ const statusLabels: Record<string, { label: string; className: string }> = {
 
 export function BusinessConversions() {
   const [activeTab, setActiveTab] = useState('all');
+  const [sourceTab, setSourceTab] = useState('all');
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  const range = useDateRange();
 
   const { data, isLoading } = useQuery<ConversionsResponse>({
-    queryKey: ['business', 'conversions', activeTab],
-    queryFn: () =>
-      api.get(
-        `/business/conversions${activeTab !== 'all' ? `?status=${activeTab}` : ''}`,
-      ),
+    queryKey: ['business', 'conversions', activeTab, sourceTab, range.apiParams],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (activeTab !== 'all') params.set('status', activeTab);
+      if (sourceTab !== 'all') params.set('source_owner', sourceTab);
+      const query = params.toString();
+      return api.get(
+        withDateRangeQuery(`/business/conversions${query ? `?${query}` : ''}`, range),
+      );
+    },
   });
 
   const approveMutation = useMutation({
@@ -80,14 +96,34 @@ export function BusinessConversions() {
     <div className="space-y-5">
       <h1 className="ui-page-title">Конверсии</h1>
 
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 bg-muted rounded-md p-0.5 w-fit">
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={cn(
+                'px-3 py-1.5 rounded-[7px] text-xs font-semibold transition-colors',
+                activeTab === tab.key
+                  ? 'bg-card text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <DateRangeSelector />
+      </div>
+
       <div className="flex gap-1 bg-muted rounded-md p-0.5 w-fit">
-        {tabs.map((tab) => (
+        {sourceTabs.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => setSourceTab(tab.key)}
             className={cn(
               'px-3 py-1.5 rounded-[7px] text-xs font-semibold transition-colors',
-              activeTab === tab.key
+              sourceTab === tab.key
                 ? 'bg-card text-foreground shadow-sm'
                 : 'text-muted-foreground hover:text-foreground',
             )}
@@ -106,7 +142,13 @@ export function BusinessConversions() {
       ) : !data?.items?.length ? (
         <EmptyState
           title="Конверсий пока нет"
-          description="Конверсии появятся, когда партнёры начнут приводить клиентов."
+          description={
+            sourceTab === 'business'
+              ? 'Конверсии появятся после переходов по вашим tracking-ссылкам.'
+              : sourceTab === 'partner'
+                ? 'Конверсии появятся, когда партнёры начнут приводить клиентов.'
+                : 'Конверсии появятся после переходов по tracking-ссылкам — своим или партнёрским.'
+          }
         />
       ) : (
         <div className="ui-card overflow-x-auto">
@@ -115,7 +157,7 @@ export function BusinessConversions() {
               <tr>
                 <th>Дата</th>
                 <th>Оффер</th>
-                <th>Партнёр</th>
+                <th>Партнёр / источник</th>
                 <th>Кампания</th>
                 <th>Order ID</th>
                 <th className="text-right">Сумма</th>
@@ -137,14 +179,23 @@ export function BusinessConversions() {
                     <td className="font-medium">
                       {conv.offer_name || conv.offer_id || '—'}
                     </td>
-                    <td>{conv.partner_name || conv.partner_id || '—'}</td>
+                    <td>
+                      <div className="flex flex-col gap-0.5">
+                        <span>{conv.partner_name || 'Свой трафик'}</span>
+                        {conv.source_owner === 'business' && conv.partner_name && (
+                          <span className="text-xs text-muted-foreground">клик: свой, атрибуция партнёру</span>
+                        )}
+                      </div>
+                    </td>
                     <td className="text-muted-foreground">{conv.campaign_name || '—'}</td>
                     <td className="text-muted-foreground">{conv.external_id || '—'}</td>
                     <td className="text-right">
                       {formatMoney(conv.amount, conv.currency || '₽')}
                     </td>
                     <td className="text-right font-medium">
-                      {formatMoney(conv.commission_amount, conv.currency || '₽')}
+                      {conv.source_owner === 'business' && !conv.partner_name
+                        ? '—'
+                        : formatMoney(conv.commission_amount, conv.currency || '₽')}
                     </td>
                     <td>
                       <span className={cn('ui-badge', status.className)}>{status.label}</span>

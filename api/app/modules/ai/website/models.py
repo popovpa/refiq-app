@@ -32,6 +32,8 @@ class WebsiteContext:
         if self.status != "ok":
             return {"status": "unavailable", "source_url": self.source_url}
         return {
+            "trust": "UNTRUSTED_EXTERNAL_CONTENT",
+            "source": "LANDING_PAGE",
             "status": "ok",
             "source_url": self.source_url,
             "title": self.title,

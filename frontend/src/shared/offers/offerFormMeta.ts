@@ -2,7 +2,11 @@ import type { OfferFormValues } from '@/shared/offers/types';
 
 export const DESCRIPTION_MAX = 1000;
 
-export type OfferFormErrorKey = 'name' | 'description' | 'commission_value' | 'attribution_window_days';
+export type OfferFormErrorKey =
+  | 'name'
+  | 'description'
+  | 'commission_value'
+  | 'attribution_window_days';
 export type OfferFormErrors = Partial<Record<OfferFormErrorKey, string>>;
 
 export type CompletenessSection = {
@@ -16,11 +20,16 @@ export function offerFormErrors(form: OfferFormValues, requireCommission: boolea
   const errors: OfferFormErrors = {};
   if (!form.name.trim()) errors.name = 'Укажите название';
   if (!form.description.trim()) errors.description = 'Добавьте описание';
-  if (requireCommission && !(Number(form.commission_value) > 0)) {
-    errors.commission_value = 'Укажите размер комиссии';
+  if (requireCommission) {
+    const value = Number(form.commission_value);
+    if (!(value > 0)) {
+      errors.commission_value = 'Укажите размер вознаграждения';
+    } else if (form.commission_type === 'percent' && value > 100) {
+      errors.commission_value = 'Процент не может быть больше 100';
+    }
   }
   if (!Number(form.attribution_window_days) || Number(form.attribution_window_days) < 1) {
-    errors.attribution_window_days = 'Укажите окно атрибуции';
+    errors.attribution_window_days = 'Укажите срок закрепления клиента';
   }
   return errors;
 }

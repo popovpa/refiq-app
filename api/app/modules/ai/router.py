@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -32,13 +32,23 @@ class GenerateDraftRequest(BaseModel):
     product_url: str | None = None
 
 
-class EditOfferRequest(BaseModel):
-    instruction: str = Field(min_length=1, max_length=4000)
+class _GuidanceRequest(BaseModel):
+    instruction: str | None = Field(default=None, max_length=4000)
+    guidance: str | None = Field(default=None, max_length=4000)
+    preset: str | None = None
+
+    @model_validator(mode="after")
+    def require_guidance_or_preset(self):
+        if not (self.guidance or self.instruction or self.preset):
+            raise ValueError("guidance or preset is required")
+        return self
+
+
+class EditOfferRequest(_GuidanceRequest):
     context: dict | None = None
 
 
-class RewriteFieldRequest(BaseModel):
-    instruction: str = Field(min_length=1, max_length=4000)
+class RewriteFieldRequest(_GuidanceRequest):
     value: str | None = None
     context: dict | None = None
 
@@ -77,6 +87,8 @@ async def rewrite_form_field(
         business_id=parse_id(session_data["active_business_id"]),
         field=field,
         instruction=data.instruction,
+        guidance=data.guidance,
+        preset=data.preset,
         current_value=data.value,
         form_context=data.context,
     )
@@ -95,6 +107,8 @@ async def edit_offer(
         business_id=parse_id(session_data["active_business_id"]),
         offer_id=offer_id,
         instruction=data.instruction,
+        guidance=data.guidance,
+        preset=data.preset,
         form_context=data.context,
     )
 
@@ -113,6 +127,8 @@ async def rewrite_existing_offer_field(
         business_id=parse_id(session_data["active_business_id"]),
         field=field,
         instruction=data.instruction,
+        guidance=data.guidance,
+        preset=data.preset,
         offer_id=offer_id,
         current_value=data.value,
         form_context=data.context,

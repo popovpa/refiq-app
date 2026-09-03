@@ -31,12 +31,15 @@ export function BusinessSettings() {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const initialTab = searchParams.get('tab');
+  const initialIntegration = searchParams.get('integration');
   const [tab, setTab] = useState<SettingsTab>(
     initialTab === 'sites' || initialTab === 'integrations' || initialTab === 'defaults' || initialTab === 'company'
       ? initialTab
       : 'company',
   );
-  const [integration, setIntegration] = useState<IntegrationKind | null>(null);
+  const [integration, setIntegration] = useState<IntegrationKind | null>(
+    initialIntegration === 'postback' || initialIntegration === 'sdk' ? initialIntegration : null,
+  );
 
   const { data, isLoading } = useQuery<BusinessWorkspaceSettings>({
     queryKey: ['business', 'settings'],

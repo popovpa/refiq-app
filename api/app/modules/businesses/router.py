@@ -1,8 +1,11 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from app.core.ids import parse_id
 
+from app.common.date_range import resolve_query_range
 from app.modules.businesses.dashboard import build_business_dashboard
 
 from app.core.database import get_db
@@ -25,10 +28,14 @@ router = APIRouter()
 async def business_dashboard(
     session_data: dict = Depends(require_business_role),
     db: AsyncSession = Depends(get_db),
-    days: int = Query(default=7, ge=1, le=90),
+    days: int | None = Query(default=None, ge=1, le=366),
+    date_from: datetime | None = Query(default=None, alias="from"),
+    date_to: datetime | None = Query(default=None, alias="to"),
+    timezone_name: str | None = Query(default=None, alias="timezone"),
 ):
     business_id = parse_id(session_data["active_business_id"])
-    return await build_business_dashboard(db, business_id, days)
+    date_range = resolve_query_range(date_from, date_to, timezone_name, days)
+    return await build_business_dashboard(db, business_id, days=days, date_range=date_range)
 
 
 @router.get("/partners")
@@ -157,8 +164,12 @@ async def block_partner(
 @router.get("/conversions")
 async def list_business_conversions(
     status: str | None = None,
+    source_owner: str | None = None,
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=20, ge=1, le=100),
+    date_from: datetime | None = Query(default=None, alias="from"),
+    date_to: datetime | None = Query(default=None, alias="to"),
+    timezone_name: str | None = Query(default=None, alias="timezone"),
     session_data: dict = Depends(require_business_role),
     db: AsyncSession = Depends(get_db),
 ):
@@ -169,20 +180,38 @@ async def list_business_conversions(
             Offer.name.label("offer_name"),
             PartnerProfile.display_name.label("partner_name"),
             Campaign.name.label("campaign_name"),
+            TrackingLink,
         )
         .join(Offer, Conversion.offer_id == Offer.id)
-        .join(PartnerProfile, Conversion.partner_id == PartnerProfile.id)
+        .outerjoin(PartnerProfile, Conversion.partner_id == PartnerProfile.id)
         .outerjoin(TrackingLink, Conversion.tracking_link_id == TrackingLink.id)
         .outerjoin(Campaign, TrackingLink.campaign_id == Campaign.id)
         .where(Conversion.business_id == business_id)
     )
+    count_filters = [Conversion.business_id == business_id]
     if status:
         query = query.where(Conversion.status == status)
+        count_filters.append(Conversion.status == status)
+    if source_owner == "business":
+        query = query.where(TrackingLink.business_id.is_not(None))
+        count_filters.append(TrackingLink.business_id.is_not(None))
+    elif source_owner == "partner":
+        query = query.where(TrackingLink.partner_id.is_not(None))
+        count_filters.append(TrackingLink.partner_id.is_not(None))
+    if date_from is not None and date_to is not None:
+        date_range = resolve_query_range(date_from, date_to, timezone_name, None)
+        query = query.where(
+            Conversion.created_at >= date_range.start,
+            Conversion.created_at <= date_range.end,
+        )
+        count_filters.extend(
+            [Conversion.created_at >= date_range.start, Conversion.created_at <= date_range.end]
+        )
     query = query.order_by(Conversion.created_at.desc())
 
-    count_query = select(func.count(Conversion.id)).where(Conversion.business_id == business_id)
-    if status:
-        count_query = count_query.where(Conversion.status == status)
+    count_query = select(func.count(Conversion.id)).where(*count_filters)
+    if source_owner in {"business", "partner"}:
+        count_query = count_query.join(TrackingLink, Conversion.tracking_link_id == TrackingLink.id)
     total = await db.scalar(count_query)
 
     result = await db.execute(query.offset((page - 1) * per_page).limit(per_page))
@@ -194,6 +223,11 @@ async def list_business_conversions(
             "partner_id": row.Conversion.partner_id,
             "partner_name": row.partner_name,
             "campaign_name": row.campaign_name,
+            "source_owner": (
+                "business"
+                if row.TrackingLink is not None and row.TrackingLink.business_id
+                else "partner"
+            ),
             "click_id": row.Conversion.click_id,
             "external_id": row.Conversion.external_id,
             "amount": float(row.Conversion.amount),
@@ -232,16 +266,17 @@ async def approve_conversion(
     conversion.status = "approved"
     conversion.approved_at = datetime.now(timezone.utc)
 
-    from app.modules.commissions.models import Commission
-    commission = Commission(
-        conversion_id=conversion.id,
-        business_id=business_id,
-        partner_id=conversion.partner_id,
-        amount=conversion.commission_amount,
-        currency=conversion.currency,
-        status="approved",
-    )
-    db.add(commission)
+    if conversion.partner_id is not None:
+        from app.modules.commissions.models import Commission
+        commission = Commission(
+            conversion_id=conversion.id,
+            business_id=business_id,
+            partner_id=conversion.partner_id,
+            amount=conversion.commission_amount,
+            currency=conversion.currency,
+            status="approved",
+        )
+        db.add(commission)
 
     return {"status": "ok"}
 

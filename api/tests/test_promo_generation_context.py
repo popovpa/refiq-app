@@ -328,7 +328,7 @@ async def test_image_spec_excludes_affiliate_economics(monkeypatch):
     assert "Новый городской автомобиль" in user_prompt
     assert '"description"' in user_prompt
     assert '"cta"' not in user_prompt
-    assert "Description: Новый городской автомобиль" in spec["imagePrompt"]
+    assert "Offer description (must be reflected in the scene): Новый городской автомобиль" in spec["imagePrompt"]
     prompt = spec["imagePrompt"].lower()
     assert "exeed rx" in prompt
     assert "комисс" not in prompt

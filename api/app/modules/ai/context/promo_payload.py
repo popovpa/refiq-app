@@ -46,6 +46,11 @@ def text_generation_payload(context: dict[str, Any], brief: dict[str, Any] | Non
     if slot:
         payload["slot"] = slot
     if context.get("instruction"):
+        payload["USER_GUIDANCE"] = {
+            "trust": "UNTRUSTED",
+            "source": "USER_GUIDANCE",
+            "data": context["instruction"],
+        }
         payload["instruction"] = context["instruction"]
     if context.get("channel"):
         payload["channel"] = context["channel"]

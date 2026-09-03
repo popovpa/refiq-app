@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import select
@@ -15,6 +15,7 @@ from app.modules.postback.dto import PostbackAccepted, PostbackRequest
 from app.modules.postback.models import PostbackCredential
 from app.modules.postback.repository import PostbackRepository
 from app.modules.postback.validator import PostbackValidator, invalid_postback
+from app.modules.promotion.attribution import resolve_conversion_attribution, within_attribution_window
 from app.modules.system.audit import write_audit_log
 
 
@@ -107,15 +108,18 @@ class PostbackService:
 
         amount = Decimal(str(payload.amount if payload.amount is not None else 0))
         currency = (payload.currency or offer.currency or "RUB").upper()
+        attributed = await resolve_conversion_attribution(self.db, click=click, link=link, offer=offer)
+        commission = self._commission(offer, amount) if attributed.partner_id else Decimal("0.00")
         conversion = Conversion(
             business_id=credential.business_id,
             offer_id=link.offer_id,
-            partner_id=link.partner_id,
-            tracking_link_id=click.tracking_link_id,
+            partner_id=attributed.partner_id,
+            tracking_link_id=attributed.tracking_link_id,
+            partner_tracking_link_id=attributed.partner_tracking_link_id,
             click_id=payload.rqcid,
             amount=float(amount),
             currency=currency,
-            commission_amount=float(self._commission(offer, amount)),
+            commission_amount=float(commission),
             status="pending",
             converted_at=datetime.now(timezone.utc),
         )
@@ -143,6 +147,13 @@ class PostbackService:
                     conversion_id=conversion_id,
                 )
             )
+            if business_id and result == PostbackAttemptResult.REJECTED:
+                from app.modules.notifications.service import NotificationService
+
+                await NotificationService(session).notify_postback_failed(
+                    business_id=business_id,
+                    reason_code=reason_code,
+                )
             await session.commit()
 
     async def _load_click(self, rqcid: str) -> Click | None:
@@ -159,13 +170,7 @@ class PostbackService:
         return result.scalar_one_or_none()
 
     def _within_attribution_window(self, click: Click, offer: Offer) -> bool:
-        created = click.created_at
-        if created is None:
-            return True
-        if created.tzinfo is None:
-            created = created.replace(tzinfo=timezone.utc)
-        window = offer.attribution_window_days or 30
-        return datetime.now(timezone.utc) <= created + timedelta(days=window)
+        return within_attribution_window(click, offer)
 
     def _commission(self, offer: Offer, amount: Decimal) -> Decimal:
         rules = offer.commission_rules or []

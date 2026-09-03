@@ -25,6 +25,9 @@ from app.modules.ai.application.creative.promo_copy_guard import (
     strip_affiliate_language,
 )
 from app.modules.ai.application.creative.promo_image_prompt import normalize_image_prompt
+from app.modules.ai.safety.image_prompt import ImagePromptValidator
+from app.modules.ai.safety.operations import AiOperation, InputSource
+from app.modules.ai.safety.pipeline import inspect_untrusted_text
 from app.modules.ai.context.offer_context import OfferPromotionContextBuilder, PURPOSE_CUSTOMER_ACQUISITION
 from app.modules.ai.context.promo_payload import brief_user_payload, text_generation_payload
 from app.modules.ai.dto import (
@@ -61,7 +64,7 @@ from app.modules.offers.models import Offer
 from app.modules.products.models import Product
 
 logger = structlog.get_logger()
-PROMO_IMAGE_COUNT = 2
+PROMO_IMAGE_COUNT = 1
 PROMO_OBJECT_PREFIX = "offers-promo"
 TEXT_SLOTS = {
     "universal_ad": {
@@ -150,9 +153,21 @@ def _usage_meta(*, run_id: int | None, item_id: int | None, offer_id: int) -> di
     }
 
 
-async def build_offer_snapshot(db: AsyncSession, offer: Offer) -> dict:
+async def build_offer_snapshot(db: AsyncSession, offer: Offer, *, user_id: int | None = None) -> dict:
     product = await _product(db, offer)
-    return await OfferPromotionContextBuilder().build(db, offer, product=product, language="ru")
+    snapshot = await OfferPromotionContextBuilder().build(db, offer, product=product, language="ru")
+    product_context = snapshot.get("productContext") or {}
+    inspect_untrusted_text(
+        " ".join(
+            str(product_context.get(key) or "")
+            for key in ("name", "description")
+        ),
+        operation=AiOperation.GENERATE_PROMOTION_BRIEF,
+        source=InputSource.OFFER_FIELD,
+        user_id=user_id,
+        offer_id=offer.id,
+    )
+    return snapshot
 
 
 async def generate_brief_from_snapshot(
@@ -301,11 +316,19 @@ async def generate_slot_payload(
     return data
 
 
-def _validated_image_prompt(prompt: str, *, product_context: dict | None) -> str:
-    text = normalize_image_prompt(prompt)
-    if looks_like_affiliate_recruiting(text, product_context=product_context):
-        raise AppError("AI_INVALID_RESPONSE", "Image prompt contained affiliate language", 502)
-    return text
+def _validated_image_prompt(
+    prompt: str,
+    *,
+    product_context: dict | None,
+    user_id: int | None = None,
+    offer_id: int | None = None,
+) -> str:
+    return ImagePromptValidator().validate(
+        prompt,
+        product_context=product_context,
+        user_id=user_id,
+        offer_id=offer_id,
+    )
 
 
 def _offer_description(context: dict | None) -> str:
@@ -321,7 +344,10 @@ def _with_offer_description(prompt: str, context: dict | None) -> str:
         return prompt
     if description in prompt:
         return prompt
-    return normalize_image_prompt(f"{prompt}\n\nDescription: {description}")
+    # Put the full offer description first so the image model must ground the scene in it.
+    return normalize_image_prompt(
+        f"Offer description (must be reflected in the scene): {description}\n\n{prompt}"
+    )
 
 
 async def generate_image_specification(
@@ -340,6 +366,7 @@ async def generate_image_specification(
     offer_description = _offer_description(context)
     payload = {
         "description": offer_description,
+        "mustReflectInScene": offer_description,
         "productContext": {
             "name": product.get("name") or "",
             "description": offer_description or (product.get("description") or ""),
@@ -365,6 +392,12 @@ async def generate_image_specification(
         "concept": concept,
         "format": aspect,
         "qrSafe": qr_safe,
+        "instruction": (
+            "Build imagePrompt so the final image visually matches the full offer description, "
+            "including product condition, audience, and setting. Do not replace specifics with a generic scene."
+            if offer_description
+            else "Build imagePrompt from available product facts only."
+        ),
     }
     extra = _usage_meta(run_id=run_id, item_id=item_id, offer_id=offer_id)
     _, spec, _result = await run_structured(
@@ -384,9 +417,11 @@ async def generate_image_specification(
     )
     product = context.get("productContext")
     try:
-        spec["imagePrompt"] = _with_offer_description(
-            _validated_image_prompt(spec.get("imagePrompt") or "", product_context=product),
-            context,
+        spec["imagePrompt"] = _validated_image_prompt(
+            _with_offer_description(spec.get("imagePrompt") or "", context),
+            product_context=product,
+            user_id=user_id,
+            offer_id=offer_id,
         )
         return spec
     except AppError as first_error:
@@ -412,9 +447,11 @@ async def generate_image_specification(
             reasoning_effort=promo_reasoning(heavy=False),
             extra_metadata=extra,
         )
-        compact["imagePrompt"] = _with_offer_description(
-            _validated_image_prompt(compact.get("imagePrompt") or "", product_context=product),
-            context,
+        compact["imagePrompt"] = _validated_image_prompt(
+            _with_offer_description(compact.get("imagePrompt") or "", context),
+            product_context=product,
+            user_id=user_id,
+            offer_id=offer_id,
         )
         return compact
 

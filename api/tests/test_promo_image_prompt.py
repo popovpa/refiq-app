@@ -54,7 +54,8 @@ def test_image_spec_prompt_has_no_character_cap():
     assert "no character cap" in text
     assert "HARD LIMIT" not in text
     assert "Alice AI ART" not in text
-    assert "PRODUCT_CONTEXT.description" in text
+    assert "PRODUCT_CONTEXT.description" in text or "mustReflectInScene" in text
+    assert "visually encode the concrete conditions" in text
     assert "NO CTA buttons" in text
     assert "headline and CTA only" not in text
     compact = image_spec_system_prompt(compact=True)
@@ -98,8 +99,34 @@ async def test_long_image_spec_is_accepted_without_truncation(monkeypatch):
         item_id=64,
     )
     assert _LONG_SPEC["imagePrompt"].strip() in spec["imagePrompt"]
-    assert "Description: Премиальный кроссовер" in spec["imagePrompt"]
+    assert "Offer description (must be reflected in the scene): Премиальный кроссовер" in spec["imagePrompt"]
+    assert spec["imagePrompt"].startswith("Offer description (must be reflected in the scene):")
     assert len(spec["imagePrompt"]) > 500
     assert "EXEED RX" in spec["imagePrompt"]
     assert "комисс" not in spec["imagePrompt"].lower()
     assert "50 000" not in spec["imagePrompt"]
+
+
+def test_image_prompt_keeps_full_offer_description_up_front():
+    from app.modules.ai.application.creative.promo_kit import _with_offer_description
+
+    description = (
+        "Продаём подержанные автомобили старше 50 лет для аудитории старше 60 лет. "
+        "Фокус на классических моделях и спокойной подаче."
+    )
+    prompt = _with_offer_description(
+        "Premium car advertisement, modern showroom lighting.",
+        {"productContext": {"description": description}},
+    )
+    assert prompt.startswith(f"Offer description (must be reflected in the scene): {description}")
+    assert "Premium car advertisement" in prompt
+    assert "старше 50 лет" in prompt
+    assert "старше 60 лет" in prompt
+
+
+def test_square_slot_generates_one_image():
+    from app.modules.creatives.promo_catalog import SLOTS
+
+    assert SLOTS["images_1_1"].image_count == 1
+    assert SLOTS["images_16_9"].image_count == 1
+    assert SLOTS["images_9_16"].image_count == 1

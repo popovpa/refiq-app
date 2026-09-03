@@ -109,6 +109,11 @@ class CampaignType(StrEnum):
     GENERAL = "GENERAL"
 
 
+class PromotionOwner(StrEnum):
+    BUSINESS = "business"
+    PARTNER = "partner"
+
+
 class ConversionStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"

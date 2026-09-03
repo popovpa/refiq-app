@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from app.common.date_range import ResolvedDateRange, local_dates, local_day_key
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -62,7 +62,12 @@ def epc(clicks: int, earnings: float) -> float:
     return round(earnings / clicks, 2)
 
 
-async def offer_stats(db: AsyncSession, offer_id: int, partner_id: int | None = None) -> dict:
+async def offer_stats(
+    db: AsyncSession,
+    offer_id: int,
+    partner_id: int | None = None,
+    date_range: ResolvedDateRange | None = None,
+) -> dict:
     click_q = (
         select(func.count(Click.id))
         .select_from(Click)
@@ -87,6 +92,17 @@ async def offer_stats(db: AsyncSession, offer_id: int, partner_id: int | None = 
                 select(Conversion.id).where(Conversion.offer_id == offer_id, Conversion.partner_id == partner_id)
             ),
         )
+    if date_range is not None:
+        click_q = click_q.where(Click.created_at >= date_range.start, Click.created_at <= date_range.end)
+        conv_q = conv_q.where(Conversion.created_at >= date_range.start, Conversion.created_at <= date_range.end)
+        revenue_q = revenue_q.where(
+            Conversion.created_at >= date_range.start,
+            Conversion.created_at <= date_range.end,
+        )
+        commission_q = commission_q.where(
+            Commission.created_at >= date_range.start,
+            Commission.created_at <= date_range.end,
+        )
 
     clicks = int(await db.scalar(click_q) or 0)
     conversions = int(await db.scalar(conv_q) or 0)
@@ -102,22 +118,89 @@ async def offer_stats(db: AsyncSession, offer_id: int, partner_id: int | None = 
     }
 
 
-async def offer_link_stats(db: AsyncSession, offer_id: int) -> dict[int, dict[str, int]]:
-    click_rows = (
-        await db.execute(
-            select(Click.tracking_link_id, func.count(Click.id))
-            .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
-            .where(TrackingLink.offer_id == offer_id)
-            .group_by(Click.tracking_link_id)
+async def offer_source_stats(
+    db: AsyncSession,
+    offer_id: int,
+    *,
+    business_owned: bool,
+    date_range: ResolvedDateRange | None = None,
+) -> dict:
+    owner_filter = TrackingLink.business_id.is_not(None) if business_owned else TrackingLink.partner_id.is_not(None)
+    click_q = (
+        select(func.count(Click.id))
+        .select_from(Click)
+        .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
+        .where(TrackingLink.offer_id == offer_id, owner_filter)
+    )
+    conv_q = (
+        select(func.count(Conversion.id))
+        .join(TrackingLink, Conversion.tracking_link_id == TrackingLink.id)
+        .where(Conversion.offer_id == offer_id, owner_filter)
+    )
+    revenue_q = (
+        select(func.coalesce(func.sum(Conversion.amount), 0))
+        .join(TrackingLink, Conversion.tracking_link_id == TrackingLink.id)
+        .where(
+            Conversion.offer_id == offer_id,
+            Conversion.status.in_(["approved", "paid"]),
+            owner_filter,
         )
-    ).all()
-    conv_rows = (
-        await db.execute(
-            select(Conversion.tracking_link_id, func.count(Conversion.id))
-            .where(Conversion.offer_id == offer_id, Conversion.tracking_link_id.is_not(None))
-            .group_by(Conversion.tracking_link_id)
+    )
+    commission_q = (
+        select(func.coalesce(func.sum(Commission.amount), 0))
+        .select_from(Commission)
+        .join(Conversion, Commission.conversion_id == Conversion.id)
+        .join(TrackingLink, Conversion.tracking_link_id == TrackingLink.id)
+        .where(Conversion.offer_id == offer_id, owner_filter)
+    )
+    if date_range is not None:
+        click_q = click_q.where(Click.created_at >= date_range.start, Click.created_at <= date_range.end)
+        conv_q = conv_q.where(Conversion.created_at >= date_range.start, Conversion.created_at <= date_range.end)
+        revenue_q = revenue_q.where(
+            Conversion.created_at >= date_range.start,
+            Conversion.created_at <= date_range.end,
         )
-    ).all()
+        commission_q = commission_q.where(
+            Commission.created_at >= date_range.start,
+            Commission.created_at <= date_range.end,
+        )
+    clicks = int(await db.scalar(click_q) or 0)
+    conversions = int(await db.scalar(conv_q) or 0)
+    revenue = float(await db.scalar(revenue_q) or 0)
+    commissions = float(await db.scalar(commission_q) or 0)
+    return {
+        "clicks": clicks,
+        "conversions": conversions,
+        "cr": cr(clicks, conversions),
+        "revenue": revenue,
+        "commissions": commissions,
+    }
+
+
+async def offer_link_stats(
+    db: AsyncSession,
+    offer_id: int,
+    date_range: ResolvedDateRange | None = None,
+) -> dict[int, dict[str, int]]:
+    click_q = (
+        select(Click.tracking_link_id, func.count(Click.id))
+        .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
+        .where(TrackingLink.offer_id == offer_id)
+        .group_by(Click.tracking_link_id)
+    )
+    conv_q = (
+        select(Conversion.tracking_link_id, func.count(Conversion.id))
+        .where(Conversion.offer_id == offer_id, Conversion.tracking_link_id.is_not(None))
+        .group_by(Conversion.tracking_link_id)
+    )
+    if date_range is not None:
+        click_q = click_q.where(Click.created_at >= date_range.start, Click.created_at <= date_range.end)
+        conv_q = conv_q.where(
+            Conversion.created_at >= date_range.start,
+            Conversion.created_at <= date_range.end,
+        )
+    click_rows = (await db.execute(click_q)).all()
+    conv_rows = (await db.execute(conv_q)).all()
     clicks = {int(row[0]): int(row[1]) for row in click_rows}
     conversions = {int(row[0]): int(row[1]) for row in conv_rows}
     return {
@@ -129,37 +212,56 @@ async def offer_link_stats(db: AsyncSession, offer_id: int) -> dict[int, dict[st
     }
 
 
-async def offer_timeseries(db: AsyncSession, offer_id: int, days: int = 14) -> list[dict]:
-    start = datetime.now(timezone.utc) - timedelta(days=days - 1)
-    start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+async def offer_timeseries(
+    db: AsyncSession,
+    offer_id: int,
+    days: int = 14,
+    date_range: ResolvedDateRange | None = None,
+) -> list[dict]:
+    if date_range is None:
+        from datetime import datetime, timedelta, timezone
 
+        now = datetime.now(timezone.utc)
+        start = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        date_range = ResolvedDateRange(start, now, "UTC")
+    start, end = date_range.start, date_range.end
     click_rows = (
         await db.execute(
-            select(func.date(Click.created_at), func.count(Click.id))
+            select(Click.created_at)
             .select_from(Click)
             .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
-            .where(TrackingLink.offer_id == offer_id, Click.created_at >= start)
-            .group_by(func.date(Click.created_at))
+            .where(
+                TrackingLink.offer_id == offer_id,
+                Click.created_at >= start,
+                Click.created_at <= end,
+            )
         )
     ).all()
     conv_rows = (
         await db.execute(
-            select(func.date(Conversion.created_at), func.count(Conversion.id))
-            .where(Conversion.offer_id == offer_id, Conversion.created_at >= start)
-            .group_by(func.date(Conversion.created_at))
+            select(Conversion.created_at).where(
+                Conversion.offer_id == offer_id,
+                Conversion.created_at >= start,
+                Conversion.created_at <= end,
+            )
         )
     ).all()
-    clicks_map = {str(day): count for day, count in click_rows}
-    conv_map = {str(day): count for day, count in conv_rows}
-
+    clicks_map: dict[str, int] = {}
+    conv_map: dict[str, int] = {}
+    for (created_at,) in click_rows:
+        key = local_day_key(created_at, date_range.timezone)
+        clicks_map[key] = clicks_map.get(key, 0) + 1
+    for (created_at,) in conv_rows:
+        key = local_day_key(created_at, date_range.timezone)
+        conv_map[key] = conv_map.get(key, 0) + 1
     series = []
-    for offset in range(days):
-        day = (start + timedelta(days=offset)).date().isoformat()
+    for day in local_dates(start, end, date_range.timezone):
+        key = day.isoformat()
         series.append(
             {
-                "date": day,
-                "clicks": int(clicks_map.get(day, 0)),
-                "conversions": int(conv_map.get(day, 0)),
+                "date": key,
+                "clicks": clicks_map.get(key, 0),
+                "conversions": conv_map.get(key, 0),
             }
         )
     return series

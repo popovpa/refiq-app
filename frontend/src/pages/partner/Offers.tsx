@@ -16,6 +16,7 @@ import {
 } from '@/shared/offers/labels';
 import type { OfferListItem } from '@/shared/offers/types';
 import { useAuth } from '@/shared/hooks/useAuth';
+import { usePromoteOwnOffer } from '@/shared/offers/usePromoteOwnOffer';
 
 interface OffersResponse {
   items: OfferListItem[];
@@ -25,6 +26,7 @@ export function PartnerOffers() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { promote: promoteOwnOffer, pending: promoteOwnPending } = usePromoteOwnOffer();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<'all' | 'available' | 'mine' | 'pending'>('all');
   const [q, setQ] = useState('');
@@ -90,7 +92,10 @@ export function PartnerOffers() {
     }
     if (tab === 'pending') return myItems.filter((item) => item.partner_status === 'pending');
     if (tab === 'available') {
-      return catalogItems.filter((item) => item.partner_status === 'approved' || item.access_policy === 'open');
+      return catalogItems.filter(
+        (item) =>
+          item.is_own_offer || item.partner_status === 'approved' || item.access_policy === 'open',
+      );
     }
     return catalogItems;
   }, [catalog, mine, tab]);
@@ -159,15 +164,17 @@ export function PartnerOffers() {
             <PartnerOfferCard
               key={offer.id}
               offer={offer}
-              joined={offer.partner_status === 'approved'}
-              pending={offer.partner_status === 'pending'}
+              joined={!offer.is_own_offer && offer.partner_status === 'approved'}
+              pending={!offer.is_own_offer && offer.partner_status === 'pending'}
               joinPending={joinOpen.isPending}
+              promoteOwnPending={promoteOwnPending}
               onOpen={openOfferDetails}
               onGetLink={setLinkOffer}
               onOpenLinks={(item) => navigate(`/partner/links?offerId=${item.id}`)}
               onJoinOpen={(item) => joinOpen.mutate(item)}
               onRequestAccess={setRequestOffer}
               onCancelRequest={(offerId) => cancelRequest.mutate(offerId)}
+              onPromoteOwn={(offer) => promoteOwnOffer(offer.id)}
             />
           ))}
         </div>

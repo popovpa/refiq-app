@@ -13,11 +13,13 @@ import { OfferAiEditPanel } from '@/shared/ai/OfferAiEditPanel';
 import { AiRewriteControl } from '@/shared/ai/AiRewriteControl';
 import { aiErrorMessage } from '@/shared/ai/messages';
 import {
+  canRequestOfferAiEdit,
   createOfferAiEditState,
   offerAiEditReducer,
   selectedSuggestions,
 } from '@/shared/ai/offerEditSession';
 import { applyFormValue } from '@/shared/ai/offerDraft';
+import { toAiGuidancePayload, type AiGuidanceRequest } from '@/shared/ai/presets';
 import type {
   AiMarkedFields,
   AiRewriteField,
@@ -85,6 +87,8 @@ export function BusinessOfferEdit() {
       forbidden_traffic: data.forbidden_traffic || [],
       partner_notes: data.partner_notes || '',
       product_url: data.product_url || '',
+      restrictions_custom: '',
+      selected_restrictions: [],
     });
   }, [data]);
 
@@ -107,8 +111,8 @@ export function BusinessOfferEdit() {
   });
 
   const editWithAi = useMutation({
-    mutationFn: (instruction: string) =>
-      api.post<OfferAiEditResponse>(`/ai/offers/${id}/edit`, { instruction, context: form }),
+    mutationFn: (request: AiGuidanceRequest) =>
+      api.post<OfferAiEditResponse>(`/ai/offers/${id}/edit`, { ...toAiGuidancePayload(request), context: form }),
     onSuccess: (payload) => {
       setGenerationId(payload.generation_id);
       dispatch({ type: 'SUCCESS', changes: payload.changes });
@@ -117,9 +121,9 @@ export function BusinessOfferEdit() {
   });
 
   const rewriteField = useMutation({
-    mutationFn: ({ field, instruction }: { field: AiRewriteField; instruction: string }) =>
+    mutationFn: ({ field, request }: { field: AiRewriteField; request: AiGuidanceRequest }) =>
       api.post<OfferAiRewriteResponse>(`/ai/offers/${id}/fields/${field}/rewrite`, {
-        instruction,
+        ...toAiGuidancePayload(request),
         value: form[field],
         context: form,
       }),
@@ -149,11 +153,12 @@ export function BusinessOfferEdit() {
   };
 
   const requestSuggestions = () => {
-    const instruction = session.instruction.trim();
-    if (session.phase !== 'input' || !instruction || aiRequestInFlight.current) return;
+    if (!canRequestOfferAiEdit(session) || aiRequestInFlight.current) return;
     aiRequestInFlight.current = true;
     dispatch({ type: 'REQUEST' });
-    editWithAi.mutate(instruction, {
+    editWithAi.mutate(
+      { preset: session.preset ?? undefined, guidance: session.instruction.trim() || undefined },
+      {
       onSettled: () => {
         aiRequestInFlight.current = false;
       },
@@ -217,9 +222,9 @@ export function BusinessOfferEdit() {
             pending={rewriteField.isPending && rewrite?.field === field}
             error={rewrite?.field === field ? rewrite.error : null}
             proposed={rewrite?.field === field ? rewrite.proposed : null}
-            onGenerate={(instruction) => {
+            onGenerate={(request) => {
               setRewrite({ field, proposed: null, error: null });
-              rewriteField.mutate({ field, instruction });
+              rewriteField.mutate({ field, request });
             }}
             onAccept={() => {
               if (!rewrite?.proposed || rewrite.field !== field) return;

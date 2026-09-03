@@ -15,6 +15,7 @@ export function EditDestinationModal({
   shortCode,
   currentUrl,
   status,
+  linkLabel = 'Партнёрская ссылка',
   onClose,
   onUpdated,
 }: {
@@ -23,6 +24,7 @@ export function EditDestinationModal({
   shortCode: string;
   currentUrl: string;
   status?: string | null;
+  linkLabel?: string;
   onClose: () => void;
   onUpdated: (destinationUrl: string) => void;
 }) {
@@ -84,7 +86,7 @@ export function EditDestinationModal({
 
         <div className="space-y-3 text-sm">
           <div>
-            <p className="ui-label">Партнёрская ссылка</p>
+            <p className="ui-label">{linkLabel}</p>
             <code className="text-sm bg-muted px-2 py-1 rounded-md">{displayTrackingUrl(shortCode)}</code>
           </div>
           <div>

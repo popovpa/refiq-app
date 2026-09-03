@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.date_range import resolve_query_range
 from app.core.database import get_db
 from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.ids import parse_id
@@ -17,6 +18,7 @@ from app.modules.offers.service import (
     ensure_business_partner,
     offer_link_stats,
     offer_public_fields,
+    offer_source_stats,
     offer_stats,
     offer_timeseries,
     partner_access_query,
@@ -200,16 +202,23 @@ async def get_offer(
     offer_id: str,
     session_data: dict = Depends(require_business_role),
     db: AsyncSession = Depends(get_db),
+    days: int | None = Query(default=None, ge=1, le=366),
+    date_from: datetime | None = Query(default=None, alias="from"),
+    date_to: datetime | None = Query(default=None, alias="to"),
+    timezone_name: str | None = Query(default=None, alias="timezone"),
 ):
     business_id = parse_id(session_data["active_business_id"])
     offer = await _get_business_offer(db, offer_id, business_id)
-    stats = await offer_stats(db, offer.id)
-    series = await offer_timeseries(db, offer.id)
+    date_range = resolve_query_range(date_from, date_to, timezone_name, days, default_days=7)
+    stats = await offer_stats(db, offer.id, date_range=date_range)
+    series = await offer_timeseries(db, offer.id, date_range=date_range)
     approved_conversions = int(
         await db.scalar(
             select(func.count(Conversion.id)).where(
                 Conversion.offer_id == offer.id,
                 Conversion.status.in_(["approved", "paid"]),
+                Conversion.created_at >= date_range.start,
+                Conversion.created_at <= date_range.end,
             )
         )
         or 0
@@ -223,7 +232,7 @@ async def get_offer(
     pending = []
     top = []
     for access, profile, user in access_rows:
-        partner_stats = await offer_stats(db, offer.id, partner_id=profile.id)
+        partner_stats = await offer_stats(db, offer.id, partner_id=profile.id, date_range=date_range)
         item = {
             "id": access.id,
             "partner_id": profile.id,
@@ -262,7 +271,9 @@ async def get_offer(
             .order_by(TrackingLink.created_at.desc())
         )
     ).all()
-    stats_by_link = await offer_link_stats(db, offer.id)
+    stats_by_link = await offer_link_stats(db, offer.id, date_range=date_range)
+    own_stats = await offer_source_stats(db, offer.id, business_owned=True, date_range=date_range)
+    partner_stats = await offer_source_stats(db, offer.id, business_owned=False, date_range=date_range)
     promotion_links = []
     for link, profile in promotion_rows:
         link_stats = stats_by_link.get(link.id, {"clicks": 0, "conversions": 0})
@@ -308,6 +319,10 @@ async def get_offer(
         "active_partners": sum(1 for row in partners if row["status"] == "approved"),
         "active_links": links_count,
         "promotion_links": promotion_links,
+        "traffic_split": {
+            "own": own_stats,
+            "partner": partner_stats,
+        },
         "warnings": warnings,
     }
 

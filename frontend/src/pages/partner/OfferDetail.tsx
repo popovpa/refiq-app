@@ -22,6 +22,8 @@ import {
   hasOfferStatData,
 } from '@/shared/offers/partnerOfferCardFormat';
 import { useAuth } from '@/shared/hooks/useAuth';
+import { usePromoteOwnOffer } from '@/shared/offers/usePromoteOwnOffer';
+import { OWN_OFFER_PROMOTE_PENDING_LABEL } from '@/shared/offers/promoteOwnOffer';
 import { cn } from '@/shared/utils/cn';
 
 interface Material {
@@ -81,6 +83,7 @@ interface PartnerOfferDetail {
   partner_notes?: string | null;
   materials?: Material[];
   partner_status?: string | null;
+  is_own_offer?: boolean;
   commission_rules: CommissionRule[];
   clicks?: number;
   conversions?: number;
@@ -182,6 +185,7 @@ export function PartnerOfferDetail() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { promote: promoteOwn, pending: promoteOwnPending } = usePromoteOwnOffer();
   const queryClient = useQueryClient();
   const [linkOpen, setLinkOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
@@ -193,8 +197,10 @@ export function PartnerOfferDetail() {
     enabled: !!id,
   });
 
-  const joined = offer?.partner_status === 'approved';
-  const pending = offer?.partner_status === 'pending';
+  const isOwn = Boolean(offer?.is_own_offer);
+  const joined = !isOwn && offer?.partner_status === 'approved';
+  const pending = !isOwn && offer?.partner_status === 'pending';
+  const offerPaused = offer?.status === 'paused';
 
   const { data: linksData } = useQuery<{ items: LinkItem[] }>({
     queryKey: ['partner', 'links'],
@@ -251,7 +257,11 @@ export function PartnerOfferDetail() {
     user?.email ||
     'Партнёр';
   const rule = offer.commission_rules?.[0];
-  const statusBadge = partnerStatusBadge(joined, pending, offer.access_policy);
+  const statusBadge = isOwn
+    ? offerPaused
+      ? { label: 'Приостановлен', className: 'bg-yellow-50 text-yellow-700' }
+      : { label: 'Ваш оффер', className: 'bg-brand-soft text-brand' }
+    : partnerStatusBadge(joined, pending, offer.access_policy);
   const hasStats = hasOfferStatData({ clicks: offer.clicks ?? 0 });
   const epc = hasStats
     ? { value: `${formatNumber(offer.epc)} ₽` }
@@ -263,10 +273,15 @@ export function PartnerOfferDetail() {
   const materials = offer.materials || [];
   const hasMaterials = materials.length > 0;
   const canCreateLink =
-    joined || (!pending && offer.access_policy === 'open' && !joined);
-  const inviteOnlyBlocked = !joined && !pending && offer.access_policy === 'invite_only';
+    !isOwn && (joined || (!pending && offer.access_policy === 'open' && !joined));
+  const inviteOnlyBlocked = !isOwn && !joined && !pending && offer.access_policy === 'invite_only';
+
+  const promoteOwnOffer = () => {
+    promoteOwn(offer.id);
+  };
 
   const openLinkFlow = () => {
+    if (isOwn) return;
     if (joined || offer.access_policy === 'open') {
       if (!joined) {
         joinOpen.mutate();
@@ -300,29 +315,51 @@ export function PartnerOfferDetail() {
               <p className="text-sm text-muted-foreground mt-0.5">{offer.category}</p>
             )}
             <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <span className={cn('ui-badge', statusBadge.className)}>{statusBadge.label}</span>
+              {isOwn && (
+                <span className="ui-badge bg-brand-soft text-brand" title="Оффер создан вашим бизнесом.">
+                  Ваш оффер
+                </span>
+              )}
+              {(!isOwn || offerPaused) && (
+                <span className={cn('ui-badge', statusBadge.className)}>{statusBadge.label}</span>
+              )}
             </div>
             <p className="text-sm text-muted-foreground mt-1.5">
               {formatCommissionLine(rule, offer.conversion_type)} · GEO {formatGeo(offer.geo)}
             </p>
+            {isOwn && (
+              <p className="text-xs text-muted-foreground mt-1">
+                Комиссия указана для внешних партнёров. При собственном продвижении комиссия не начисляется.
+              </p>
+            )}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {joined && <Button onClick={() => setLinkOpen(true)}>Получить ссылку</Button>}
-          {pending && (
+          {isOwn && offer.status === 'active' && (
+            <Button onClick={promoteOwnOffer} disabled={promoteOwnPending}>
+              {promoteOwnPending ? OWN_OFFER_PROMOTE_PENDING_LABEL : 'Продвигать свой оффер'}
+            </Button>
+          )}
+          {isOwn && offerPaused && (
+            <Button disabled title="Оффер приостановлен">
+              Продвижение недоступно
+            </Button>
+          )}
+          {!isOwn && joined && <Button onClick={() => setLinkOpen(true)}>Получить ссылку</Button>}
+          {!isOwn && pending && (
             <>
               <Button variant="secondary" onClick={() => cancelRequest.mutate()}>
                 Отменить заявку
               </Button>
             </>
           )}
-          {!joined && !pending && offer.access_policy === 'open' && (
+          {!isOwn && !joined && !pending && offer.access_policy === 'open' && (
             <Button onClick={() => joinOpen.mutate()} disabled={joinOpen.isPending}>
               Получить ссылку
             </Button>
           )}
-          {!joined && !pending && offer.access_policy === 'approval' && (
+          {!isOwn && !joined && !pending && offer.access_policy === 'approval' && (
             <Button onClick={() => setRequestOpen(true)}>Запросить доступ</Button>
           )}
         </div>
@@ -436,8 +473,8 @@ export function PartnerOfferDetail() {
       <div className="grid lg:grid-cols-[1.65fr_1fr] gap-3 flex-1 min-h-0 pb-0.5">
         <div className="ui-card p-4 flex flex-col min-h-0 overflow-hidden">
           <div className="flex items-center gap-x-3 gap-y-1 mb-2.5 shrink-0 min-w-0 flex-wrap">
-            <h2 className="ui-section-title">Моё продвижение</h2>
-            {joined && (
+            <h2 className="ui-section-title">{isOwn ? 'Собственное продвижение' : 'Моё продвижение'}</h2>
+            {!isOwn && joined && (
               <button
                 type="button"
                 onClick={() => navigate(`/partner/links?offerId=${offer.id}`)}
@@ -446,7 +483,7 @@ export function PartnerOfferDetail() {
                 Все ссылки →
               </button>
             )}
-            {canCreateLink && !inviteOnlyBlocked && (
+            {!isOwn && canCreateLink && !inviteOnlyBlocked && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -460,7 +497,20 @@ export function PartnerOfferDetail() {
             )}
           </div>
 
-          {joined && activeLinksCount > 0 && myStats && (
+          {isOwn ? (
+            <div className="flex-1 flex flex-col justify-center py-2 min-h-0 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Этот оффер принадлежит вашему бизнесу. Собственное продвижение идёт без комиссии и выплат.
+              </p>
+              {offer.status === 'active' ? (
+                <Button className="w-fit" onClick={promoteOwnOffer} disabled={promoteOwnPending}>
+                  {promoteOwnPending ? OWN_OFFER_PROMOTE_PENDING_LABEL : 'Продвигать свой оффер'}
+                </Button>
+              ) : (
+                <p className="text-sm text-muted-foreground">Продвижение недоступно, пока оффер приостановлен.</p>
+              )}
+            </div>
+          ) : joined && activeLinksCount > 0 && myStats ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 text-sm shrink-0">
               <MiniStat
                 label={`${activeLinksCount} ${pluralize(activeLinksCount, 'активная ссылка', 'активные ссылки', 'активных ссылок')}`}
@@ -469,9 +519,9 @@ export function PartnerOfferDetail() {
               <MiniStat label={`${formatNumber(myStats.conversions)} ${pluralize(myStats.conversions, 'конверсия', 'конверсии', 'конверсий')}`} />
               <MiniStat label={`${formatNumber(myStats.commissions ?? 0)} ₽ заработано`} />
             </div>
-          )}
+          ) : null}
 
-          {joined && offerLinks.length > 0 ? (
+          {!isOwn && joined && offerLinks.length > 0 ? (
             <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-0.5">
               {offerLinks.map((link) => (
                 <div
@@ -498,14 +548,14 @@ export function PartnerOfferDetail() {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : !isOwn ? (
             <div className="flex-1 flex flex-col justify-center py-2 min-h-0">
               <p className="text-sm text-muted-foreground">Вы ещё не продвигаете этот оффер.</p>
               <p className="text-sm text-muted-foreground mt-1">
                 Создайте первую партнёрскую ссылку, чтобы начать получать трафик и конверсии.
               </p>
             </div>
-          )}
+          ) : null}
         </div>
 
         <PartnerCreatives

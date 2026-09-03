@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.common.date_range import ResolvedDateRange, local_dates, local_day_key
 from app.modules.commissions.models import Commission
 from app.modules.conversions.models import Conversion
 from app.modules.links.models import Click, TrackingLink
@@ -14,32 +15,35 @@ from app.modules.sdk.service import SdkCredentialService
 from app.modules.users.models import User
 
 
-def _period_start(days: int, *, now: datetime | None = None) -> datetime:
-    current = now or datetime.now(timezone.utc)
-    return (current - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
-
-
 def _pct_change(current: float, previous: float) -> float | None:
     if previous == 0:
         return None
     return round((current - previous) / previous * 100, 1)
 
 
-def _day_key(value) -> str:
-    text = str(value)
-    return text[:10]
-
-
-async def build_business_dashboard(db: AsyncSession, business_id: int, days: int = 7) -> dict:
+async def build_business_dashboard(
+    db: AsyncSession,
+    business_id: int,
+    days: int | None = None,
+    *,
+    date_range: ResolvedDateRange | None = None,
+) -> dict:
     now = datetime.now(timezone.utc)
-    start = _period_start(days, now=now)
-    previous_start = start - timedelta(days=days)
+    if date_range is None:
+        days = days or 7
+        start = (now - timedelta(days=days - 1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        date_range = ResolvedDateRange(start, now, "UTC")
+    start = date_range.start
+    end = date_range.end
+    previous_start = date_range.previous_start
+    previous_end = date_range.previous_end
 
     offer_ids = list(
         (
             await db.execute(select(Offer.id).where(Offer.business_id == business_id))
         ).scalars()
     )
+    has_offers = bool(offer_ids)
     active_offers = int(
         await db.scalar(
             select(func.count(Offer.id)).where(Offer.business_id == business_id, Offer.status == "active")
@@ -56,35 +60,52 @@ async def build_business_dashboard(db: AsyncSession, business_id: int, days: int
         or 0
     )
 
-    async def conversion_count(since: datetime, until: datetime | None = None, statuses: list[str] | None = None) -> int:
-        filters = [Conversion.business_id == business_id, Conversion.created_at >= since]
-        if until is not None:
-            filters.append(Conversion.created_at < until)
+    async def conversion_count(
+        since: datetime,
+        until: datetime,
+        statuses: list[str] | None = None,
+        *,
+        exclusive_end: bool = False,
+    ) -> int:
+        filters = [
+            Conversion.business_id == business_id,
+            Conversion.created_at >= since,
+            Conversion.created_at < until if exclusive_end else Conversion.created_at <= until,
+        ]
         if statuses:
             filters.append(Conversion.status.in_(statuses))
         return int(await db.scalar(select(func.count(Conversion.id)).where(*filters)) or 0)
 
-    async def conversion_sum(since: datetime, until: datetime | None = None, statuses: list[str] | None = None) -> float:
-        filters = [Conversion.business_id == business_id, Conversion.created_at >= since]
-        if until is not None:
-            filters.append(Conversion.created_at < until)
+    async def conversion_sum(
+        since: datetime,
+        until: datetime,
+        statuses: list[str] | None = None,
+        *,
+        exclusive_end: bool = False,
+    ) -> float:
+        filters = [
+            Conversion.business_id == business_id,
+            Conversion.created_at >= since,
+            Conversion.created_at < until if exclusive_end else Conversion.created_at <= until,
+        ]
         if statuses:
             filters.append(Conversion.status.in_(statuses))
         return float(
             await db.scalar(select(func.coalesce(func.sum(Conversion.amount), 0)).where(*filters)) or 0
         )
 
-    conversions = await conversion_count(start)
-    conversions_prev = await conversion_count(previous_start, start)
-    sales = await conversion_sum(start, statuses=["approved", "paid"])
-    sales_prev = await conversion_sum(previous_start, start, statuses=["approved", "paid"])
-    approved = await conversion_count(start, statuses=["approved", "paid"])
-    pending_conversions = await conversion_count(start, statuses=["pending"])
+    conversions = await conversion_count(start, end)
+    conversions_prev = await conversion_count(previous_start, previous_end, exclusive_end=True)
+    sales = await conversion_sum(start, end, statuses=["approved", "paid"])
+    sales_prev = await conversion_sum(previous_start, previous_end, statuses=["approved", "paid"], exclusive_end=True)
+    approved = await conversion_count(start, end, statuses=["approved", "paid"])
+    pending_conversions = await conversion_count(start, end, statuses=["pending"])
     commissions = float(
         await db.scalar(
             select(func.coalesce(func.sum(Conversion.commission_amount), 0)).where(
                 Conversion.business_id == business_id,
                 Conversion.created_at >= start,
+                Conversion.created_at <= end,
                 Conversion.status.in_(["approved", "paid"]),
             )
         )
@@ -97,7 +118,11 @@ async def build_business_dashboard(db: AsyncSession, business_id: int, days: int
                 select(func.count(Click.id))
                 .select_from(Click)
                 .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
-                .where(TrackingLink.offer_id.in_(offer_ids), Click.created_at >= start)
+                .where(
+                    TrackingLink.offer_id.in_(offer_ids),
+                    Click.created_at >= start,
+                    Click.created_at <= end,
+                )
             )
             or 0
         )
@@ -111,14 +136,15 @@ async def build_business_dashboard(db: AsyncSession, business_id: int, days: int
         or 0
     )
 
-    timeseries = await _timeseries(db, business_id, start, days)
-    recent_conversions = await _recent_conversions(db, business_id, start)
-    top_offers = await _top_offers(db, business_id, offer_ids, start)
-    top_partners = await _top_partners(db, business_id, offer_ids, start)
+    timeseries = await _timeseries(db, business_id, date_range)
+    recent_conversions = await _recent_conversions(db, business_id, start, end)
+    top_offers = await _top_offers(db, business_id, offer_ids, start, end)
+    top_partners = await _top_partners(db, business_id, offer_ids, start, end)
     attention = await _attention(
         db,
         business_id=business_id,
         start=start,
+        end=end,
         pending_conversions=pending_conversions,
         active_offers=active_offers,
     )
@@ -138,7 +164,11 @@ async def build_business_dashboard(db: AsyncSession, business_id: int, days: int
         attention = attention[:5]
 
     return {
-        "period_days": days,
+        "period_days": max(1, (end.date() - start.date()).days + 1),
+        "from": start.isoformat(),
+        "to": end.isoformat(),
+        "timezone": date_range.timezone,
+        "has_offers": has_offers,
         "kpis": {
             "active_offers": active_offers,
             "active_partners": active_partners,
@@ -169,54 +199,49 @@ async def build_business_dashboard(db: AsyncSession, business_id: int, days: int
     }
 
 
-async def _timeseries(db: AsyncSession, business_id: int, start: datetime, days: int) -> list[dict]:
+async def _timeseries(db: AsyncSession, business_id: int, date_range: ResolvedDateRange) -> list[dict]:
+    start, end = date_range.start, date_range.end
     conv_rows = (
         await db.execute(
-            select(
-                func.date(Conversion.created_at),
-                func.count(Conversion.id),
-            )
-            .where(Conversion.business_id == business_id, Conversion.created_at >= start)
-            .group_by(func.date(Conversion.created_at))
-        )
-    ).all()
-    sales_rows = (
-        await db.execute(
-            select(
-                func.date(Conversion.created_at),
-                func.coalesce(func.sum(Conversion.amount), 0),
-            )
-            .where(
+            select(Conversion.created_at, Conversion.amount, Conversion.status).where(
                 Conversion.business_id == business_id,
                 Conversion.created_at >= start,
-                Conversion.status.in_(["approved", "paid"]),
+                Conversion.created_at <= end,
             )
-            .group_by(func.date(Conversion.created_at))
         )
     ).all()
-    conv_map = {_day_key(day): int(count) for day, count in conv_rows}
-    sales_map = {_day_key(day): float(total) for day, total in sales_rows}
+    conv_map: dict[str, int] = {}
+    sales_map: dict[str, float] = {}
+    for created_at, amount, status in conv_rows:
+        day = local_day_key(created_at, date_range.timezone)
+        conv_map[day] = conv_map.get(day, 0) + 1
+        if status in ("approved", "paid"):
+            sales_map[day] = sales_map.get(day, 0.0) + float(amount or 0)
     series = []
-    for offset in range(days):
-        day = (start + timedelta(days=offset)).date().isoformat()
+    for day in local_dates(start, end, date_range.timezone):
+        key = day.isoformat()
         series.append(
             {
-                "date": day,
-                "conversions": conv_map.get(day, 0),
-                "sales": round(sales_map.get(day, 0.0), 2),
+                "date": key,
+                "conversions": conv_map.get(key, 0),
+                "sales": round(sales_map.get(key, 0.0), 2),
             }
         )
     return series
 
 
-async def _recent_conversions(db: AsyncSession, business_id: int, start: datetime) -> list[dict]:
+async def _recent_conversions(db: AsyncSession, business_id: int, start: datetime, end: datetime) -> list[dict]:
     rows = (
         await db.execute(
             select(Conversion, Offer.name, PartnerProfile.display_name, User.email)
             .join(Offer, Conversion.offer_id == Offer.id)
-            .join(PartnerProfile, Conversion.partner_id == PartnerProfile.id)
-            .join(User, PartnerProfile.user_id == User.id)
-            .where(Conversion.business_id == business_id, Conversion.created_at >= start)
+            .outerjoin(PartnerProfile, Conversion.partner_id == PartnerProfile.id)
+            .outerjoin(User, PartnerProfile.user_id == User.id)
+            .where(
+                Conversion.business_id == business_id,
+                Conversion.created_at >= start,
+                Conversion.created_at <= end,
+            )
             .order_by(Conversion.created_at.desc())
             .limit(5)
         )
@@ -235,7 +260,9 @@ async def _recent_conversions(db: AsyncSession, business_id: int, start: datetim
     ]
 
 
-async def _top_offers(db: AsyncSession, business_id: int, offer_ids: list[int], start: datetime) -> list[dict]:
+async def _top_offers(
+    db: AsyncSession, business_id: int, offer_ids: list[int], start: datetime, end: datetime
+) -> list[dict]:
     if not offer_ids:
         return []
     conv_rows = (
@@ -246,7 +273,11 @@ async def _top_offers(db: AsyncSession, business_id: int, offer_ids: list[int], 
                 func.coalesce(func.sum(Conversion.amount), 0),
                 func.coalesce(func.sum(Conversion.commission_amount), 0),
             )
-            .where(Conversion.business_id == business_id, Conversion.created_at >= start)
+            .where(
+                Conversion.business_id == business_id,
+                Conversion.created_at >= start,
+                Conversion.created_at <= end,
+            )
             .group_by(Conversion.offer_id)
         )
     ).all()
@@ -256,6 +287,7 @@ async def _top_offers(db: AsyncSession, business_id: int, offer_ids: list[int], 
             .where(
                 Conversion.business_id == business_id,
                 Conversion.created_at >= start,
+                Conversion.created_at <= end,
                 Conversion.status.in_(["approved", "paid"]),
             )
             .group_by(Conversion.offer_id)
@@ -265,7 +297,11 @@ async def _top_offers(db: AsyncSession, business_id: int, offer_ids: list[int], 
         await db.execute(
             select(TrackingLink.offer_id, func.count(Click.id))
             .join(Click, Click.tracking_link_id == TrackingLink.id)
-            .where(TrackingLink.offer_id.in_(offer_ids), Click.created_at >= start)
+            .where(
+                TrackingLink.offer_id.in_(offer_ids),
+                Click.created_at >= start,
+                Click.created_at <= end,
+            )
             .group_by(TrackingLink.offer_id)
         )
     ).all()
@@ -306,7 +342,9 @@ async def _top_offers(db: AsyncSession, business_id: int, offer_ids: list[int], 
     return items
 
 
-async def _top_partners(db: AsyncSession, business_id: int, offer_ids: list[int], start: datetime) -> list[dict]:
+async def _top_partners(
+    db: AsyncSession, business_id: int, offer_ids: list[int], start: datetime, end: datetime
+) -> list[dict]:
     conv_rows = (
         await db.execute(
             select(
@@ -315,7 +353,12 @@ async def _top_partners(db: AsyncSession, business_id: int, offer_ids: list[int]
                 func.coalesce(func.sum(Conversion.amount), 0),
                 func.coalesce(func.sum(Conversion.commission_amount), 0),
             )
-            .where(Conversion.business_id == business_id, Conversion.created_at >= start)
+            .where(
+                Conversion.business_id == business_id,
+                Conversion.created_at >= start,
+                Conversion.created_at <= end,
+                Conversion.partner_id.is_not(None),
+            )
             .group_by(Conversion.partner_id)
         )
     ).all()
@@ -325,6 +368,8 @@ async def _top_partners(db: AsyncSession, business_id: int, offer_ids: list[int]
             .where(
                 Conversion.business_id == business_id,
                 Conversion.created_at >= start,
+                Conversion.created_at <= end,
+                Conversion.partner_id.is_not(None),
                 Conversion.status.in_(["approved", "paid"]),
             )
             .group_by(Conversion.partner_id)
@@ -336,7 +381,12 @@ async def _top_partners(db: AsyncSession, business_id: int, offer_ids: list[int]
             await db.execute(
                 select(TrackingLink.partner_id, func.count(Click.id))
                 .join(Click, Click.tracking_link_id == TrackingLink.id)
-                .where(TrackingLink.offer_id.in_(offer_ids), Click.created_at >= start)
+                .where(
+                    TrackingLink.offer_id.in_(offer_ids),
+                    TrackingLink.partner_id.is_not(None),
+                    Click.created_at >= start,
+                    Click.created_at <= end,
+                )
                 .group_by(TrackingLink.partner_id)
             )
         ).all()
@@ -353,7 +403,7 @@ async def _top_partners(db: AsyncSession, business_id: int, offer_ids: list[int]
     sales = {partner_id: float(total) for partner_id, total in sales_rows}
     clicks = {partner_id: int(count) for partner_id, count in click_rows}
     offers = {partner_id: int(count) for partner_id, count in offer_rows}
-    ranked_ids = [partner_id for partner_id, count, *_ in conv_rows if count > 0]
+    ranked_ids = [partner_id for partner_id, count, *_ in conv_rows if partner_id and count > 0]
     ranked_ids.sort(key=lambda partner_id: (sales.get(partner_id, 0.0), conversions.get(partner_id, 0)), reverse=True)
     ranked_ids = ranked_ids[:5]
     if not ranked_ids:
@@ -385,6 +435,7 @@ async def _attention(
     *,
     business_id: int,
     start: datetime,
+    end: datetime,
     pending_conversions: int,
     active_offers: int,
 ) -> list[dict]:
@@ -419,7 +470,11 @@ async def _attention(
         (
             await db.execute(
                 select(Conversion.offer_id)
-                .where(Conversion.business_id == business_id, Conversion.created_at >= start)
+                .where(
+                    Conversion.business_id == business_id,
+                    Conversion.created_at >= start,
+                    Conversion.created_at <= end,
+                )
                 .group_by(Conversion.offer_id)
             )
         ).scalars()

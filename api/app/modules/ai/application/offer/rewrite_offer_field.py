@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +11,10 @@ from app.modules.ai.context.offer_context import OfferAIContextBuilder
 from app.modules.ai.dto import OfferRewritePayload
 from app.modules.ai.offer_fields import REWRITE_FIELDS
 from app.modules.ai.prompts import offer as prompts
+from app.modules.ai.safety.operations import AiOperation, InputSource, rewrite_operation
+from app.modules.ai.safety.output_guard import filter_allowed_fields, guard_output
+from app.modules.ai.safety.pipeline import INVALID_OFFER_GUIDANCE_MESSAGE, evaluate_user_guidance
+from app.modules.ai.safety.trusted_prompt import build_structured_user_prompt, untrusted_block
 from app.modules.ai.schemas import offer_rewrite_schema
 from app.modules.offers.models import Offer
 from app.modules.products.models import Product
@@ -30,13 +32,17 @@ async def rewrite_offer_field(
     user_id: int,
     business_id: int | None,
     field: str,
-    instruction: str,
+    instruction: str | None = None,
+    guidance: str | None = None,
+    preset: str | None = None,
     offer_id: str | None = None,
     current_value: str | None = None,
     form_context: dict | None = None,
 ) -> dict:
     field = _validate_field(field)
+    operation = rewrite_operation(field)
     entity_id = None
+    offer_ref = None
     if offer_id:
         if db is None or business_id is None:
             raise AppError("AI_OFFER_REQUIRED", "Offer context is required", 400)
@@ -45,22 +51,38 @@ async def rewrite_offer_field(
         context = OfferAIContextBuilder().from_offer(offer, product)
         value = context.get(field) if current_value is None else current_value
         entity_id = str(offer.id)
+        offer_ref = offer.id
     else:
         context = OfferAIContextBuilder().from_form(form_context or {})
         value = current_value if current_value is not None else context.get(field, "")
 
+    evaluated = await evaluate_user_guidance(
+        operation=operation,
+        instruction=instruction,
+        guidance=guidance,
+        preset=preset,
+        user_id=user_id,
+        offer_id=offer_ref,
+        message=INVALID_OFFER_GUIDANCE_MESSAGE,
+    )
     generation_id, payload, _result = await run_structured(
         schema=offer_rewrite_schema(),
         schema_name="offer_field_rewrite",
-        system_prompt=prompts.rewrite_system_prompt(),
-        user_prompt=json.dumps(
-            {
+        system_prompt=prompts.rewrite_system_prompt(operation),
+        user_prompt=build_structured_user_prompt(
+            operation=operation,
+            trusted={"preset": evaluated.preset, "field": field},
+            untrusted={
+                "USER_GUIDANCE": untrusted_block(evaluated.guidance, InputSource.USER_GUIDANCE),
+                "OFFER_DATA": untrusted_block(context, InputSource.OFFER_FIELD),
+                "CURRENT_VALUE": untrusted_block(value, InputSource.OFFER_FIELD),
+            },
+            compat={
                 "field": field,
-                "instruction": instruction.strip(),
+                "instruction": evaluated.composed,
                 "current_value": value,
                 "offer": context,
             },
-            ensure_ascii=False,
         ),
         operation=Operation.OFFER_FIELD_REWRITE,
         prompt_version=prompts.REWRITE_V1,
@@ -68,10 +90,12 @@ async def rewrite_offer_field(
         entity_id=entity_id,
         payload_model=OfferRewritePayload,
     )
+    guard_output(payload, operation=operation, user_id=user_id, offer_id=offer_ref)
+    filtered = filter_allowed_fields({"value": payload["value"]}, operation)
     return {
         "generation_id": generation_id,
         "field": field,
-        "value": payload["value"],
+        "value": filtered.get("value", payload["value"]),
     }
 
 

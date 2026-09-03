@@ -26,6 +26,7 @@ async def test_business_dashboard_aggregates_period_metrics(client: AsyncClient,
     payload = empty.json()
     assert payload["kpis"]["active_offers"] == 1
     assert payload["kpis"]["conversions"] == 0
+    assert payload["has_offers"] is True
     assert payload["top_offers"] == []
     assert payload["funnel"]["clicks"] == 0
     assert "timeseries" in payload

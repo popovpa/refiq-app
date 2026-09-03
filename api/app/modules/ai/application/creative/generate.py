@@ -18,6 +18,9 @@ from app.modules.ai.errors import AiError
 from app.modules.ai.jobs import GenerationJobRunner
 from app.modules.ai.lifecycle.service import AiGenerationService
 from app.modules.ai.prompts import creative as prompts
+from app.modules.ai.safety.operations import AiOperation
+from app.modules.ai.safety.output_guard import guard_output
+from app.modules.ai.safety.pipeline import evaluate_user_guidance
 from app.modules.ai.schemas import creative_rewrite_schema, creative_social_schema, creative_text_schema
 from app.modules.assets.service import AssetService
 from app.modules.brand_kits.service import get_brand_kit
@@ -44,6 +47,14 @@ async def generate_creative(
     job_runner: GenerationJobRunner | None = None,
 ) -> dict:
     count = clamp_variants(creative_type, variants)
+    evaluated = await evaluate_user_guidance(
+        operation=AiOperation.GENERATE_CREATIVE,
+        guidance=instruction,
+        user_id=user_id,
+        offer_id=offer.id,
+        require_input=False,
+    )
+    instruction = evaluated.guidance
     if creative_type == CreativeType.BANNER.value:
         return await start_banner_generation(
             db,
@@ -166,6 +177,14 @@ async def rewrite_creative(
         instruction=instruction,
     )
     context["current"] = creative.text_content or {}
+    evaluated = await evaluate_user_guidance(
+        operation=AiOperation.REWRITE_CREATIVE,
+        guidance=instruction,
+        user_id=user_id,
+        offer_id=offer.id,
+    )
+    instruction = evaluated.guidance
+    context["instruction"] = instruction or None
     generation_id = str(uuid.uuid4())
     try:
         _, payload, _result = await run_structured(
@@ -182,6 +201,7 @@ async def rewrite_creative(
             generation_id=generation_id,
         )
         assert_customer_facing_copy(payload, product_context=context.get("productContext"))
+        guard_output(payload, operation=AiOperation.REWRITE_CREATIVE, user_id=user_id, offer_id=offer.id)
     except Exception as exc:
         await _record_generation(
             db,
@@ -412,6 +432,7 @@ async def _generate_text_family(
             generation_id=generation_id,
         )
         assert_customer_facing_copy(payload, product_context=context.get("productContext"))
+        guard_output(payload, operation=AiOperation.GENERATE_CREATIVE, user_id=user_id, offer_id=offer.id)
     except Exception as exc:
         await _record_generation(
             db,

@@ -33,14 +33,17 @@ type HistoryResponse = {
 export function BusinessLinkDetailDrawer({
   offerId,
   link,
+  variant = 'partner',
   onClose,
   onEditDestination,
 }: {
   offerId: string;
   link: BusinessPromotionLink;
+  variant?: 'partner' | 'own';
   onClose: () => void;
   onEditDestination: () => void;
 }) {
+  const isOwn = variant === 'own';
   const [historyOpen, setHistoryOpen] = useState(false);
   const shortCode = link.short_code || link.url.split('/').pop() || '';
   const { data: history, isLoading: historyLoading } = useQuery<HistoryResponse>({
@@ -55,7 +58,9 @@ export function BusinessLinkDetailDrawer({
       <aside className="relative ui-card w-full max-w-md h-full shadow-soft flex flex-col border-l">
         <div className="flex items-start justify-between gap-3 p-5 border-b border-border/70">
           <div className="min-w-0">
-            <h2 className="ui-section-title truncate">{link.partner_name || link.name || 'Ссылка'}</h2>
+            <h2 className="ui-section-title truncate">
+              {isOwn ? link.name || 'Собственная ссылка' : link.partner_name || link.name || 'Ссылка'}
+            </h2>
           </div>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Закрыть">
             <X size={18} />
@@ -63,7 +68,7 @@ export function BusinessLinkDetailDrawer({
         </div>
 
         <div className="flex-1 overflow-auto p-5 space-y-4">
-          <DetailRow label="Партнёр">{link.partner_name || '—'}</DetailRow>
+          {!isOwn && <DetailRow label="Партнёр">{link.partner_name || '—'}</DetailRow>}
           <DetailRow label="Ссылка">
             <code className="text-sm bg-muted px-2 py-1 rounded-md">{displayTrackingUrl(shortCode)}</code>
           </DetailRow>
@@ -74,9 +79,13 @@ export function BusinessLinkDetailDrawer({
               shortCode={shortCode}
             />
           </DetailRow>
-          <DetailRow label="Источник">
-            {link.traffic_source ? trafficLabel(link.traffic_source) : '—'}
-          </DetailRow>
+          {!isOwn && (
+            <DetailRow label="Источник">
+              {link.traffic_source ? trafficLabel(link.traffic_source) : '—'}
+            </DetailRow>
+          )}
+          <DetailRow label="Клики">{link.clicks ?? 0}</DetailRow>
+          <DetailRow label="Конверсии">{link.conversions ?? 0}</DetailRow>
           <DetailRow label="Статус">
             <span className={cn('ui-badge', linkStatusClass(link.status))}>{linkStatusLabel(link.status)}</span>
           </DetailRow>

@@ -7,8 +7,8 @@ Internal operational console for RefIQ staff. It is **not** the partner/business
 | Environment | UI | API |
 | --- | --- | --- |
 | Production (internal network / VPN only) | `https://admin.int.refiq.ru/` | `https://admin.int.refiq.ru/api/admin/v1/*` |
-| Local Docker | `http://127.0.0.1:3100/` | `http://127.0.0.1:8001/api/admin/v1/*` |
-| Local Vite | `http://localhost:5174/` | proxied to `localhost:8001` |
+| Local Docker | `http://127.0.0.1:3100/` | `http://127.0.0.1:8002/api/admin/v1/*` |
+| Local Vite | `http://localhost:5174/` | proxied to `localhost:8002` |
 
 Public product stays on `app.refiq.ru` / `api.refiq.ru` (`localhost:3000` / `localhost:8000`). Admin routes are **not** mounted on the public FastAPI app.
 
@@ -39,17 +39,17 @@ docker compose up -d --build postgres redis api admin-api admin-front
 
 Public UI remains `localhost:3000`. Admin binds to loopback only:
 
-* UI `127.0.0.1:3100`
-* API `127.0.0.1:8001`
+* UI `127.0.0.1:3100` (nginx also proxies `/api` to `admin-api`)
+* API `127.0.0.1:8002`
 
 Without Docker:
 
 ```bash
 # API repo
-uvicorn app.admin.app:app --host 127.0.0.1 --port 8001 --reload
+uvicorn app.admin.app:app --host 127.0.0.1 --port 8002 --reload
 
 # admin-front
-cd admin-front && npm install && npm run dev   # Vite :5174 → /api → :8001
+cd admin-front && npm install && npm run dev   # Vite :5174 → /api → :8002
 ```
 
 ## First admin account
@@ -113,7 +113,7 @@ Audit UI is read-only (`Administration → Audit`).
 
 * Public process: `app.main:app` (`entrypoint.sh`)
 * Admin process: `app.admin.app:app` (`entrypoint-admin.sh`)
-* Compose services `admin-api` and `admin-front` sit on the `internal` network only and bind `127.0.0.1`
+* Compose services `admin-api` and `admin-front` sit on the `internal` network only and bind `127.0.0.1` (`3100` UI, `8002` API)
 * `admin-front` nginx proxies `/api` to `admin-api`, never to `api`
 * Production: attach `deploy/internal/nginx-admin.int.refiq.ru.conf` to an **internal** load balancer / VPN ingress. Do not publish it on the public ingress used by `api.refiq.ru`
 

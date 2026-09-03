@@ -32,6 +32,7 @@ from app.modules.billing.models import BusinessSubscription, PlatformFee, Billin
 from app.admin.auth.models import AdminUser  # noqa
 from app.admin.audit.models import AdminAuditEvent  # noqa
 from app.modules.postback.attempt import PostbackAttempt  # noqa
+from app.modules.notifications.models import Notification  # noqa
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 

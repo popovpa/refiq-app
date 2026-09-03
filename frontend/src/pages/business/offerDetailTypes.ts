@@ -18,6 +18,19 @@ export interface OfferPartnerRow {
   revenue?: number;
 }
 
+export interface TrafficSplitStats {
+  clicks: number;
+  conversions: number;
+  cr: number;
+  revenue: number;
+  commissions: number;
+}
+
+export interface TrafficSplit {
+  own: TrafficSplitStats;
+  partner: TrafficSplitStats;
+}
+
 export interface BusinessOfferDetailData {
   id: number;
   name: string;
@@ -50,5 +63,6 @@ export interface BusinessOfferDetailData {
   active_partners: number;
   active_links: number;
   promotion_links: BusinessPromotionLink[];
+  traffic_split?: TrafficSplit;
   warnings: string[];
 }

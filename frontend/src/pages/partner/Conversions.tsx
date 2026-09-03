@@ -3,6 +3,8 @@ import { api } from '@/shared/api/client';
 import { Skeleton } from '@/shared/components/Skeleton';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { formatMoney } from '@/shared/utils/format';
+import { DateRangeSelector } from '@/shared/dateRange/DateRangeSelector';
+import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 
 interface Conversion {
   id: string;
@@ -25,15 +27,19 @@ const statusMap: Record<string, { label: string; className: string }> = {
 };
 
 export function PartnerConversions() {
+  const range = useDateRange();
   const { data, isLoading } = useQuery<{ items: Conversion[]; total: number }>({
-    queryKey: ['partner', 'conversions'],
-    queryFn: () => api.get('/partner/conversions'),
+    queryKey: ['partner', 'conversions', range.apiParams],
+    queryFn: () => api.get(withDateRangeQuery('/partner/conversions', range)),
   });
 
   if (isLoading) {
     return (
       <div className="space-y-5">
-        <h1 className="ui-page-title">Конверсии</h1>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h1 className="ui-page-title">Конверсии</h1>
+          <DateRangeSelector />
+        </div>
         <Skeleton className="h-64 rounded-xl" />
       </div>
     );
@@ -41,7 +47,10 @@ export function PartnerConversions() {
 
   return (
     <div className="space-y-5">
-      <h1 className="ui-page-title">Конверсии</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="ui-page-title">Конверсии</h1>
+        <DateRangeSelector />
+      </div>
       {!data?.items?.length ? (
         <EmptyState
           title="Конверсий пока нет"

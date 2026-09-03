@@ -85,6 +85,7 @@ from app.modules.sites.router import router as sites_router
 from app.modules.ai.router import router as ai_router
 from app.modules.creatives.business_router import router as business_creatives_router
 from app.modules.creatives.partner_router import router as partner_creatives_router
+from app.modules.notifications.router import router as notifications_router
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users_router, prefix="/api/v1/me", tags=["users"])
@@ -107,6 +108,7 @@ app.include_router(sdk_event_router, tags=["sdk"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(business_creatives_router, prefix="/api/v1/business/offers", tags=["creatives"])
 app.include_router(partner_creatives_router, prefix="/api/v1/partner", tags=["creatives"])
+app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
 
 
 @app.get("/health")

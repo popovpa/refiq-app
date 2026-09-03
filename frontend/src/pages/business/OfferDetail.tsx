@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeftRight, MousePointerClick, Percent, Wallet } from 'lucide-react';
 import { api } from '@/shared/api/client';
 import { Button } from '@/shared/components/Button';
@@ -12,6 +12,8 @@ import { BusinessLinkDetailDrawer, type BusinessPromotionLink } from '@/shared/l
 import { EditDestinationModal } from '@/shared/links/EditDestinationModal';
 import { cn } from '@/shared/utils/cn';
 import { formatCommission, formatMoney, formatNumber } from '@/shared/utils/format';
+import { DateRangeSelector } from '@/shared/dateRange/DateRangeSelector';
+import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 import { OfferImage } from '@/shared/offers/OfferImage';
 import { OfferAiSplitButton } from '@/shared/offers/OfferAiSplitButton';
 import { OfferCreativesTab } from '@/shared/creatives/OfferCreativesTab';
@@ -24,6 +26,7 @@ import {
   trafficLabel,
 } from '@/shared/offers/labels';
 import { OfferOverview, OfferOverviewSkeleton, offerKpiTrends } from './OfferOverview';
+import { OfferPromotionTab } from './OfferPromotionTab';
 import type { BusinessOfferDetailData } from './offerDetailTypes';
 
 const partnerStatus: Record<string, { label: string; className: string }> = {
@@ -35,10 +38,21 @@ const partnerStatus: Record<string, { label: string; className: string }> = {
 
 export function BusinessOfferDetail() {
   const { id } = useParams<{ id: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { addToast } = useToast();
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'overview' | 'partners' | 'terms' | 'promotion' | 'materials'>('overview');
+  const initialTab = searchParams.get('tab');
+  const [openCreateLink] = useState(() => searchParams.get('createLink') === '1');
+  const [tab, setTab] = useState<'overview' | 'partners' | 'terms' | 'promotion' | 'materials'>(
+    initialTab === 'promotion' ||
+      initialTab === 'partners' ||
+      initialTab === 'terms' ||
+      initialTab === 'materials' ||
+      initialTab === 'overview'
+      ? initialTab
+      : 'overview',
+  );
   const [partnerFilter, setPartnerFilter] = useState<'all' | 'approved' | 'pending'>('all');
   const [confirm, setConfirm] = useState<'pause' | 'resume' | 'archive' | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -46,11 +60,24 @@ export function BusinessOfferDetail() {
   const [selectedLink, setSelectedLink] = useState<BusinessPromotionLink | null>(null);
   const [editDestination, setEditDestination] = useState(false);
 
+  const range = useDateRange();
   const { data: offer, isLoading } = useQuery<BusinessOfferDetailData>({
-    queryKey: ['business', 'offers', id],
-    queryFn: () => api.get(`/business/offers/${id}`),
+    queryKey: ['business', 'offers', id, range.apiParams],
+    queryFn: () => api.get(withDateRangeQuery(`/business/offers/${id}`, range)),
     enabled: !!id,
   });
+  const { data: ownLinksData } = useQuery<{ items: Array<{ status: string; stats?: { clicks?: number } }> }>({
+    queryKey: ['business', 'offers', id, 'own-links'],
+    queryFn: () => api.get(`/business/offers/${id}/links`),
+    enabled: !!id,
+  });
+
+  useEffect(() => {
+    if (searchParams.get('createLink') !== '1') return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('createLink');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['business', 'offers', id] });
 
@@ -94,6 +121,9 @@ export function BusinessOfferDetail() {
   if (isLoading) {
     return (
       <div className="space-y-3">
+        <div className="flex items-center justify-end">
+          <DateRangeSelector />
+        </div>
         <Skeleton className="h-4 w-24" />
         <Skeleton className="h-14 rounded-xl" />
         <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
@@ -139,6 +169,7 @@ export function BusinessOfferDetail() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
+          <DateRangeSelector />
           <OfferAiSplitButton
             label="Изменить с AI"
             onPrimary={() => navigate(`/business/offers/${id}/edit?ai=1`)}
@@ -201,6 +232,10 @@ export function BusinessOfferDetail() {
       {tab === 'overview' && (
         <OfferOverview
           offer={offer}
+          ownLinks={(ownLinksData?.items || []).map((link) => ({
+            status: link.status,
+            clicks: link.stats?.clicks || 0,
+          }))}
           onOpenPartners={(filter) => {
             setPartnerFilter(filter || 'all');
             setTab('partners');
@@ -310,40 +345,15 @@ export function BusinessOfferDetail() {
         </div>
       )}
 
-      {tab === 'promotion' && (
-        <div className="ui-card overflow-x-auto">
-          <div className="px-4 py-3 text-sm text-muted-foreground">
-            Активные партнёры: {formatNumber(offer.active_partners)} · Активные ссылки: {formatNumber(offer.active_links)}
-          </div>
-          <table className="ui-table">
-            <thead>
-              <tr>
-                <th>Партнёр</th>
-                <th>Ссылка</th>
-                <th>Источник</th>
-                <th className="text-right">Клики</th>
-                <th className="text-right">Конверсии</th>
-              </tr>
-            </thead>
-            <tbody>
-              {offer.promotion_links.map((link) => (
-                <tr
-                  key={link.id}
-                  className="cursor-pointer"
-                  onClick={() => setSelectedLink(link)}
-                >
-                  <td className="font-medium">{link.partner_name || link.name}</td>
-                  <td>
-                    <code className="text-xs bg-muted px-2 py-1 rounded-md">{link.url}</code>
-                  </td>
-                  <td>{link.traffic_source ? trafficLabel(link.traffic_source) : '—'}</td>
-                  <td className="text-right">{formatNumber(link.clicks)}</td>
-                  <td className="text-right">{formatNumber(link.conversions)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {tab === 'promotion' && id && (
+        <OfferPromotionTab
+          offerId={id}
+          offerStatus={offer.status}
+          trafficSplit={offer.traffic_split}
+          partnerLinks={offer.promotion_links}
+          onOpenPartnerLink={setSelectedLink}
+          autoOpenCreateLink={openCreateLink && offer.status === 'active'}
+        />
       )}
 
       {tab === 'materials' && id && (
@@ -354,6 +364,7 @@ export function BusinessOfferDetail() {
         <BusinessLinkDetailDrawer
           offerId={id}
           link={selectedLink}
+          variant="partner"
           onClose={() => {
             setSelectedLink(null);
             setEditDestination(false);

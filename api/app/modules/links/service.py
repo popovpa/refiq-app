@@ -70,15 +70,27 @@ async def batch_link_stats(
 
     all_time_conv_rows = (
         await db.execute(
-            select(Conversion.tracking_link_id, func.count(Conversion.id))
+            select(Conversion.partner_tracking_link_id, func.count(Conversion.id))
             .where(
-                Conversion.tracking_link_id.in_(link_ids),
+                Conversion.partner_tracking_link_id.in_(link_ids),
                 Conversion.partner_id == partner_id,
             )
-            .group_by(Conversion.tracking_link_id)
+            .group_by(Conversion.partner_tracking_link_id)
         )
     ).all()
-    all_time_conversions = {row[0]: int(row[1]) for row in all_time_conv_rows}
+    all_time_conversions = {row[0]: int(row[1]) for row in all_time_conv_rows if row[0] is not None}
+    if not all_time_conversions:
+        all_time_conv_rows = (
+            await db.execute(
+                select(Conversion.tracking_link_id, func.count(Conversion.id))
+                .where(
+                    Conversion.tracking_link_id.in_(link_ids),
+                    Conversion.partner_id == partner_id,
+                )
+                .group_by(Conversion.tracking_link_id)
+            )
+        ).all()
+        all_time_conversions = {row[0]: int(row[1]) for row in all_time_conv_rows}
 
     period_click_rows = (
         await db.execute(
@@ -94,33 +106,33 @@ async def batch_link_stats(
 
     period_conv_rows = (
         await db.execute(
-            select(Conversion.tracking_link_id, func.count(Conversion.id))
+            select(Conversion.partner_tracking_link_id, func.count(Conversion.id))
             .where(
-                Conversion.tracking_link_id.in_(link_ids),
+                Conversion.partner_tracking_link_id.in_(link_ids),
                 Conversion.partner_id == partner_id,
                 Conversion.created_at >= start,
             )
-            .group_by(Conversion.tracking_link_id)
+            .group_by(Conversion.partner_tracking_link_id)
         )
     ).all()
-    period_conversions = {row[0]: int(row[1]) for row in period_conv_rows}
+    period_conversions = {row[0]: int(row[1]) for row in period_conv_rows if row[0] is not None}
 
     period_earned_rows = (
         await db.execute(
             select(
-                Conversion.tracking_link_id,
+                Conversion.partner_tracking_link_id,
                 func.coalesce(func.sum(Commission.amount), 0),
             )
             .join(Commission, Commission.conversion_id == Conversion.id)
             .where(
-                Conversion.tracking_link_id.in_(link_ids),
+                Conversion.partner_tracking_link_id.in_(link_ids),
                 Conversion.partner_id == partner_id,
                 Commission.created_at >= start,
             )
-            .group_by(Conversion.tracking_link_id)
+            .group_by(Conversion.partner_tracking_link_id)
         )
     ).all()
-    period_earned = {row[0]: float(row[1]) for row in period_earned_rows}
+    period_earned = {row[0]: float(row[1]) for row in period_earned_rows if row[0] is not None}
 
     stats: dict[int, dict] = {}
     for link_id in link_ids:

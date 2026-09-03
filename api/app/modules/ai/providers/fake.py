@@ -20,24 +20,44 @@ MIN_PNG = (
 )
 
 
+GUARD_SCHEMA_NAME = "ai_guidance_classification"
+DEFAULT_GUARD_RESPONSE = {
+    "allowed": True,
+    "category": "VALID_GUIDANCE",
+    "reason_code": "OK",
+}
+
+
 class FakeTextGenerationProvider:
     def __init__(self) -> None:
         self.structured_responses: list[dict[str, Any]] = []
+        self.guard_responses: list[dict[str, Any]] = []
         self.text_responses: list[str] = []
         self.error: Exception | None = None
+        self.guard_error: Exception | None = None
         self.calls: list[StructuredGenerationRequest | TextGenerationRequest] = []
+        self.guard_calls: list[StructuredGenerationRequest] = []
 
     def queue_structured(self, data: dict[str, Any]) -> None:
         self.structured_responses.append(data)
 
+    def queue_guard(self, data: dict[str, Any]) -> None:
+        self.guard_responses.append(data)
+
     def fail_with(self, error: Exception) -> None:
         self.error = error
 
+    def fail_guard_with(self, error: Exception) -> None:
+        self.guard_error = error
+
     def reset(self) -> None:
         self.structured_responses.clear()
+        self.guard_responses.clear()
         self.text_responses.clear()
         self.error = None
+        self.guard_error = None
         self.calls.clear()
+        self.guard_calls.clear()
 
     async def generate(self, request: TextGenerationRequest) -> GenerationResult:
         self.calls.append(request)
@@ -47,6 +67,12 @@ class FakeTextGenerationProvider:
         return self._result(content=content, structured=None)
 
     async def generate_structured(self, request: StructuredGenerationRequest) -> GenerationResult:
+        if request.schema_name == GUARD_SCHEMA_NAME:
+            self.guard_calls.append(request)
+            if self.guard_error:
+                raise self.guard_error
+            data = self.guard_responses.pop(0) if self.guard_responses else DEFAULT_GUARD_RESPONSE
+            return self._result(content=None, structured=data)
         self.calls.append(request)
         if self.error:
             raise self.error

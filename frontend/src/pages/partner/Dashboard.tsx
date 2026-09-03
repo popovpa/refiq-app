@@ -26,11 +26,14 @@ import { Skeleton } from '@/shared/components/Skeleton';
 import { Button } from '@/shared/components/Button';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { formatMoney, formatNumber } from '@/shared/utils/format';
+import { PageHeading } from '@/shared/dateRange/PageHeading';
+import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 import { OfferImage } from '@/shared/offers/OfferImage';
 
 interface PartnerDashboardData {
   active_offers: number;
   active_links: number;
+  has_offers?: boolean;
   total_conversions: number;
   total_earnings: number;
   pending_payout: number;
@@ -66,10 +69,11 @@ function formatRule(offer: OfferItem): string {
 
 export function PartnerDashboard() {
   const navigate = useNavigate();
+  const range = useDateRange();
 
   const { data, isLoading } = useQuery<PartnerDashboardData>({
-    queryKey: ['partner', 'dashboard'],
-    queryFn: () => api.get('/partner/dashboard'),
+    queryKey: ['partner', 'dashboard', range.apiParams],
+    queryFn: () => api.get(withDateRangeQuery('/partner/dashboard', range)),
   });
 
   const { data: myOffers } = useQuery<{ items: OfferItem[] }>({
@@ -85,6 +89,7 @@ export function PartnerDashboard() {
   if (isLoading) {
     return (
       <div className="space-y-6">
+        <PageHeading title="Обзор" dateRangeFilter="header" />
         <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
           {[...Array(5)].map((_, i) => (
             <Skeleton key={i} className="h-28 rounded-xl" />
@@ -95,12 +100,12 @@ export function PartnerDashboard() {
     );
   }
 
-  const isEmpty = !data?.active_offers && !data?.active_links && !data?.total_conversions;
+  const isOnboarding = data ? data.has_offers === false && !data.active_offers : false;
 
-  if (isEmpty) {
+  if (isOnboarding) {
     return (
       <div className="space-y-5">
-        <h1 className="ui-page-title">Обзор</h1>
+        <PageHeading title="Обзор" dateRangeFilter="none" />
         <EmptyState
           title="Найдите первый оффер для продвижения"
           description="Откройте каталог, выберите оффер и получите партнёрскую ссылку."
@@ -193,7 +198,7 @@ export function PartnerDashboard() {
 
   return (
     <div className="space-y-5">
-      <h1 className="ui-page-title">Обзор</h1>
+      <PageHeading title="Обзор" dateRangeFilter="header" />
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
         {stats.map((stat) => (
           <StatCard

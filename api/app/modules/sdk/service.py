@@ -59,7 +59,20 @@ class SdkCredentialService:
             ).strip().lower()
             if not is_valid_script_id(script_id):
                 continue
+            script = await self.repository.get_by_script_id(script_id)
+            if not script:
+                continue
+            was_connected = script.last_success_at is not None
             await self.repository.mark_success(script_id)
+            if not was_connected:
+                from app.modules.notifications.service import NotificationService, site_domain
+
+                _, domain = await site_domain(self.db, script.site_id)
+                await NotificationService(self.db).notify_sdk_connected(
+                    business_id=script.business_id,
+                    site_id=script.site_id,
+                    domain=domain,
+                )
 
 
 def _parse_json(raw: str):

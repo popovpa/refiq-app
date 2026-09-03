@@ -31,6 +31,11 @@ Copy `.env.example` to `.env`. Application settings are loaded in `app/core/conf
 | `AI_TIMEOUT_SECONDS` | `45` | Provider HTTP timeout for text. |
 | `AI_IMAGE_TIMEOUT_SECONDS` | `90` | Provider HTTP timeout for image generation. |
 | `AI_MAX_RETRIES` | `1` | Extra attempts for retryable provider errors (timeouts, 429, 5xx). |
+| `AI_GUIDANCE_MAX_CHARS` | `4000` | Max normalized user-guidance / untrusted text length. |
+| `OPENAI_GUARD_MODEL` | `gpt-4.1-mini` | Cheap model for semantic guidance classification when the text provider is OpenAI. |
+| `AI_GUARD_MODEL` | empty | Optional override for the guard model on any text provider. |
+| `AI_SEMANTIC_GUARD_ENABLED` | `true` | Run the cheap semantic classifier after the local injection guard. |
+| `AI_SEMANTIC_GUARD_FAIL_CLOSED` | `true` | Reject security-sensitive AI edits if the guard call fails or is malformed. |
 | `ASSET_STORAGE_DIR` | `./data/assets` | Local object storage root for generated banner files. |
 
 If `OPENAI_API_KEY` is empty and `AI_PROVIDER=openai`, AI endpoints return a normalized `AI_NOT_CONFIGURED` error. Offer CRUD keeps working.
@@ -41,14 +46,17 @@ If `OPENAI_API_KEY` is empty and `AI_PROVIDER=openai`, AI endpoints return a nor
 
 ```text
 use case (draft / edit / rewrite)
+  → normalize + local injection guard + semantic guard
+  → trusted prompt builder (untrusted USER_GUIDANCE / OFFER_DATA / landing)
   → OfferAIContextBuilder + versioned prompts
   → TextGenerationProvider (generate / generate_structured)
   → ProviderResolver
   → OpenAI adapter | Fake provider
-  → local schema validation
+  → local schema validation + output guard
   → DTO for the frontend (Offer is not saved)
 
 + AiUsageService (every success and failure)
++ ai/safety (operations, events, ImagePromptValidator)
 ```
 
 Offer use cases never import the OpenAI SDK or HTTP types. Structured JSON is validated locally before it reaches the client. The draft/edit/rewrite endpoints do not call `Offer` persistence.

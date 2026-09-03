@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { MoreHorizontal } from 'lucide-react';
 import { api, type ApiError } from '@/shared/api/client';
 import { Button } from '@/shared/components/Button';
@@ -24,9 +25,11 @@ const QUERY_KEY = ['business', 'sites'] as const;
 export function SitesTab() {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  const siteFromUrl = Number(searchParams.get('site') || '') || null;
   const [addOpen, setAddOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
-  const [openId, setOpenId] = useState<number | null>(null);
+  const [openId, setOpenId] = useState<number | null>(siteFromUrl);
   const [menu, setMenu] = useState<{ site: BusinessSite; rect: DOMRect } | null>(null);
   const [confirm, setConfirm] = useState<{ site: BusinessSite; type: 'disable' | 'delete' } | null>(null);
 

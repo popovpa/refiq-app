@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     AI_TIMEOUT_SECONDS: float = 45
     AI_IMAGE_TIMEOUT_SECONDS: float = 90
     AI_MAX_RETRIES: int = 1
+    AI_GUIDANCE_MAX_CHARS: int = 4000
+    OPENAI_GUARD_MODEL: str = "gpt-4.1-mini"
+    AI_GUARD_MODEL: str = ""
+    AI_SEMANTIC_GUARD_ENABLED: bool = True
+    AI_SEMANTIC_GUARD_FAIL_CLOSED: bool = True
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_PROMO_MODEL: str = "deepseek-v4-pro"

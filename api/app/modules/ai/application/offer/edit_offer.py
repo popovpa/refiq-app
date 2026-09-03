@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +21,10 @@ from app.modules.ai.offer_fields import (
     TECHNICAL_FIELDS,
 )
 from app.modules.ai.prompts import offer as prompts
+from app.modules.ai.safety.operations import AiOperation, InputSource
+from app.modules.ai.safety.output_guard import guard_output
+from app.modules.ai.safety.pipeline import INVALID_OFFER_GUIDANCE_MESSAGE, evaluate_user_guidance
+from app.modules.ai.safety.trusted_prompt import build_structured_user_prompt, untrusted_block
 from app.modules.ai.schemas import offer_edit_schema
 from app.modules.offers.models import Offer
 from app.modules.products.models import Product
@@ -34,10 +36,21 @@ async def propose_offer_edit(
     user_id: int,
     business_id: int,
     offer_id: str,
-    instruction: str,
+    instruction: str | None = None,
+    guidance: str | None = None,
+    preset: str | None = None,
     form_context: dict | None = None,
 ) -> dict:
     offer = await _owned_offer(db, offer_id, business_id)
+    evaluated = await evaluate_user_guidance(
+        operation=AiOperation.EDIT_OFFER,
+        instruction=instruction,
+        guidance=guidance,
+        preset=preset,
+        user_id=user_id,
+        offer_id=offer.id,
+        message=INVALID_OFFER_GUIDANCE_MESSAGE,
+    )
     product = await _product(db, offer)
     context = OfferAIContextBuilder().from_offer(offer, product)
     if form_context:
@@ -51,9 +64,14 @@ async def propose_offer_edit(
         schema=offer_edit_schema(),
         schema_name="offer_edit",
         system_prompt=prompts.edit_system_prompt(),
-        user_prompt=json.dumps(
-            {"instruction": instruction.strip(), "offer": context},
-            ensure_ascii=False,
+        user_prompt=build_structured_user_prompt(
+            operation=AiOperation.EDIT_OFFER,
+            trusted={"preset": evaluated.preset},
+            untrusted={
+                "USER_GUIDANCE": untrusted_block(evaluated.guidance, InputSource.USER_GUIDANCE),
+                "OFFER_DATA": untrusted_block(context, InputSource.OFFER_FIELD),
+            },
+            compat={"instruction": evaluated.composed, "offer": context},
         ),
         operation=Operation.OFFER_EDIT,
         prompt_version=prompts.EDIT_V1,
@@ -61,7 +79,8 @@ async def propose_offer_edit(
         entity_id=str(offer.id),
         payload_model=OfferEditPayload,
     )
-    allow_rules = instruction_allows_business_rules(instruction)
+    guard_output(payload, operation=AiOperation.EDIT_OFFER, user_id=user_id, offer_id=offer.id)
+    allow_rules = instruction_allows_business_rules(evaluated.guidance)
     changes = []
     seen: set[str] = set()
     for raw in payload["changes"]:
