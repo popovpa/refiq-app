@@ -12,6 +12,8 @@ from app.modules.campaigns.models import Campaign
 from app.modules.links.models import TrackingLink
 from app.modules.offers.models import Offer, OfferPartnerAccess
 from app.modules.partners.models import PartnerProfile
+from app.modules.partners.privacy import partner_public_display_name_from
+from app.modules.users.models import User
 from app.modules.promotion.campaigns import (
     campaign_payload,
     campaign_stats,
@@ -160,9 +162,10 @@ async def list_business_campaigns(
     business_id = parse_id(session_data["active_business_id"])
     rows = (
         await db.execute(
-            select(Campaign, Offer.name.label("offer_name"), PartnerProfile.display_name.label("partner_name"))
+            select(Campaign, Offer.name.label("offer_name"), PartnerProfile, User)
             .join(Offer, Campaign.offer_id == Offer.id)
             .join(PartnerProfile, Campaign.partner_id == PartnerProfile.id)
+            .join(User, PartnerProfile.user_id == User.id)
             .where(Offer.business_id == business_id, Campaign.partner_id.is_not(None))
             .order_by(Campaign.created_at.desc())
         )
@@ -174,7 +177,7 @@ async def list_business_campaigns(
                 row.Campaign,
                 stats,
                 offer_name=row.offer_name,
-                partner_name=row.partner_name,
+                partner_name=partner_public_display_name_from(row.PartnerProfile, row.User),
             )
             for row in rows
         ]

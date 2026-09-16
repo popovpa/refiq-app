@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Check, ChevronRight, Sparkles } from 'lucide-react';
 import { Button } from '@/shared/components/Button';
-import { CATEGORIES } from '@/shared/offers/labels';
+import { CATEGORY_FILTERS } from '@/shared/offers/labels';
 
 const EXAMPLE =
   'Онлайн-курс Python для начинающих. Стоимость 30 000 ₽. Хотим платить партнёрам за подтверждённую покупку.';
@@ -113,9 +113,9 @@ export function AiDraftBrief({
                 disabled={pending}
               >
                 <option value="">Не указана</option>
-                {CATEGORIES.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
+                {CATEGORY_FILTERS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
                   </option>
                 ))}
               </select>

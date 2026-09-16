@@ -8,9 +8,10 @@ export function BusinessOfferNew() {
 
   return (
     <OfferWizard
+      mode="create"
       initialAiBrief={startWithAi}
       onBack={() => navigate('/business/offers')}
-      onCreated={(id) => navigate(`/business/offers/${id}`)}
+      onSaved={(id) => navigate(`/business/offers/${id}`)}
     />
   );
 }

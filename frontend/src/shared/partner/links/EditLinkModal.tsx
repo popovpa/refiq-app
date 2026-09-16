@@ -8,12 +8,8 @@ import { TRAFFIC_TYPES } from '@/shared/offers/labels';
 import type { PartnerLinkItem } from '@/shared/partner/links/types';
 
 function trafficOptionsForLink(link: PartnerLinkItem) {
-  const forbidden = new Set(link.offer_forbidden_traffic || []);
-  const allowed = link.offer_allowed_traffic || [];
-  const base = allowed.length
-    ? TRAFFIC_TYPES.filter((item) => allowed.includes(item.value))
-    : TRAFFIC_TYPES;
-  return base.filter((item) => !forbidden.has(item.value));
+  const allowed = new Set(link.offer_allowed_traffic || []);
+  return TRAFFIC_TYPES.filter((item) => allowed.has(item.value));
 }
 
 export function EditLinkModal({

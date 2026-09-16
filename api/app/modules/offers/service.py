@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from app.common.date_range import ResolvedDateRange, local_dates, local_day_key
 
 from sqlalchemy import Select, func, select
@@ -6,10 +8,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.commissions.models import Commission
 from app.modules.conversions.models import Conversion
 from app.modules.links.models import Click, TrackingLink
+from app.modules.catalog.data import CATEGORIES, resolve_category_code, vertical_by_code
+from app.modules.catalog.data import category_by_code
 from app.modules.offers.models import Offer, OfferCommissionRule, OfferPartnerAccess
 from app.modules.partners.models import PartnerProfile
+from app.modules.partners.privacy import partner_public_display_name_from, strip_partner_contact_fields
 from app.modules.products.models import Product
 from app.modules.users.models import User
+
+ACTIVE_ACCESS_STATUSES = frozenset({"pending", "approved"})
 
 ATTRIBUTION_MODEL = "last eligible partner click within attribution window"
 
@@ -26,14 +33,33 @@ def commission_payload(rules: list[OfferCommissionRule]) -> list[dict]:
     ]
 
 
+def offer_category_filter(value: str):
+    vertical = vertical_by_code(value)
+    if vertical:
+        codes = [item[1] for item in CATEGORIES if item[0] == vertical[0]]
+        return Offer.category.in_(codes)
+    code = resolve_category_code(value)
+    if code:
+        return Offer.category == code
+    return Offer.category == value
+
+
 def offer_public_fields(offer: Offer) -> dict:
+    category = category_by_code(offer.category)
+    vertical = vertical_by_code(category[0]) if category else None
     return {
         "id": offer.id,
         "name": offer.name,
         "description": offer.description,
         "image_url": offer.image_url,
         "category": offer.category,
+        "category_id": offer.category_id,
+        "category_code": category[1] if category else offer.category,
+        "category_name": category[2] if category else offer.category,
+        "vertical_code": vertical[0] if vertical else None,
+        "vertical_name": vertical[1] if vertical else None,
         "geo": offer.geo,
+        "hold_period_days": offer.hold_period_days or 0,
         "status": offer.status,
         "visibility": offer.visibility,
         "access_policy": offer.access_policy,
@@ -334,3 +360,68 @@ def partner_access_query() -> Select:
         .join(PartnerProfile, OfferPartnerAccess.partner_id == PartnerProfile.id)
         .join(User, PartnerProfile.user_id == User.id)
     )
+
+
+def serialize_partner_application(access: OfferPartnerAccess | None) -> dict | None:
+    if access is None:
+        return None
+    return {
+        "status": access.status,
+        "created_at": access.created_at.isoformat() if access.created_at else None,
+        "rejection_reason": access.rejection_reason if access.status == "rejected" else None,
+    }
+
+
+def serialize_business_partner_access(
+    access: OfferPartnerAccess,
+    profile: PartnerProfile,
+    user: User | None,
+    stats: dict,
+) -> dict:
+    return strip_partner_contact_fields(
+        {
+            "id": access.id,
+            "partner_id": profile.id,
+            "name": partner_public_display_name_from(profile, user),
+            "status": access.status,
+            "source": access.source,
+            "created_at": access.created_at.isoformat() if access.created_at else None,
+            "rejection_reason": access.rejection_reason if access.status == "rejected" else None,
+            **stats,
+        }
+    )
+
+
+def apply_partner_offer_request(
+    access: OfferPartnerAccess | None,
+    *,
+    offer_id: int,
+    partner_id: int,
+    status: str,
+) -> OfferPartnerAccess:
+    now = datetime.now(timezone.utc)
+    if access is None:
+        return OfferPartnerAccess(
+            offer_id=offer_id,
+            partner_id=partner_id,
+            status=status,
+            source="marketplace",
+            comment=None,
+            business_comment=None,
+            traffic_sources=None,
+            topics=None,
+            geo=None,
+            rejection_reason=None,
+            approved_at=now if status == "approved" else None,
+        )
+    access.status = status
+    access.source = "marketplace"
+    access.comment = None
+    access.business_comment = None
+    access.traffic_sources = None
+    access.topics = None
+    access.geo = None
+    access.rejection_reason = None
+    access.created_at = now
+    access.approved_at = now if status == "approved" else None
+    return access

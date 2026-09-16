@@ -16,7 +16,7 @@ from app.modules.ai.resolver import get_fake_image_provider, get_fake_provider
 from app.modules.ai.usage.models import AiUsage
 from app.modules.assets.models import Asset
 from app.modules.creatives.models import Creative
-from tests.helpers import become_partner, register_business
+from tests.helpers import create_partner_link, partner_with_access, register_business
 
 BRIEF = {
     "targetAudience": "Команды продаж в RU",
@@ -243,18 +243,10 @@ def _promo_png(size: int = 256) -> bytes:
     return buffer.getvalue()
 
 
-async def _offer_link(client: AsyncClient, offer_id: str, name: str = "QR") -> dict:
-    await become_partner(client, f"{name} Partner")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    join = await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    assert join.status_code == 200, join.text
-    created = await client.post(
-        "/api/v1/partner/links",
-        json={"offer_id": int(offer_id), "name": name, "traffic_source": "telegram"},
-    )
-    assert created.status_code == 200, created.text
-    await client.post("/api/v1/me/context", json={"role": "business"})
-    return created.json()
+async def _offer_link(client: AsyncClient, offer_id: str, name: str = "QR") -> tuple[dict, AsyncClient]:
+    partner = await partner_with_access(offer_id, f"{name.lower()}-kit-partner@example.com", f"{name} Partner")
+    created = await create_partner_link(partner, offer_id, name=name)
+    return created, partner
 
 
 @pytest.mark.asyncio
@@ -398,27 +390,21 @@ async def test_partner_sees_only_published_promo_materials(
 
     await client.post(f"/api/v1/business/offers/{offer_id}/creatives/{text_id}/publish")
 
-    await become_partner(client, "Мария")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    join = await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    assert join.status_code == 200, join.text
+    partner = await partner_with_access(offer_id, "promo-kit-maria@example.com", "Мария")
 
-    listed = await client.get(f"/api/v1/partner/offers/{offer_id}/creatives")
+    listed = await partner.get(f"/api/v1/partner/offers/{offer_id}/creatives")
     ids = {item["id"] for item in listed.json()["items"]}
     assert text_id in ids
     assert image_id not in ids
 
-    draft = await client.get(f"/api/v1/partner/offers/{offer_id}/creatives/{image_id}")
+    draft = await partner.get(f"/api/v1/partner/offers/{offer_id}/creatives/{image_id}")
     assert draft.status_code == 404
-    draft_file = await client.get(
+    draft_file = await partner.get(
         f"/api/v1/partner/offers/{offer_id}/promo-materials/{image_id}/image"
     )
     assert draft_file.status_code == 404
-
-    await client.post("/api/v1/me/context", json={"role": "business"})
     await client.post(f"/api/v1/business/offers/{offer_id}/creatives/{image_id}/publish")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    image = await client.get(
+    image = await partner.get(
         f"/api/v1/partner/offers/{offer_id}/promo-materials/{image_id}/image"
     )
     assert image.status_code == 200
@@ -577,7 +563,7 @@ async def test_selectable_slots_skip_vk_add_qr(
     assert labels["meta_ads"] == "Meta Ads (Facebook)"
     assert labels["vk_ads"] == "VK Реклама"
 
-    link = await _offer_link(client, offer_id)
+    link, _partner = await _offer_link(client, offer_id)
     ai_fake.queue_structured(BRIEF)
     ai_fake.queue_structured({"posts": KIT_TEXTS["telegram_posts"]})
     ai_fake.queue_structured(YANDEX)
@@ -936,7 +922,7 @@ async def test_partner_qr_image_uses_tracking_link(
     ai_fake.queue_structured(BRIEF)
     ai_fake.queue_structured(IMAGE_SPEC)
     get_fake_image_provider().queue_image(_promo_png())
-    link = await _offer_link(client, offer_id)
+    link, partner = await _offer_link(client, offer_id)
     started = await client.post(
         f"/api/v1/business/offers/{offer_id}/creatives/promo-kit",
         json={"slots": ["images_qr"], "qr_tracking_link_id": link["id"]},
@@ -951,13 +937,12 @@ async def test_partner_qr_image_uses_tracking_link(
     assert business_file.status_code == 200
     base_bytes = business_file.content
 
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    second = await client.post(
+    second = await partner.post(
         "/api/v1/partner/links",
         json={"offer_id": int(offer_id), "name": "QR-2", "traffic_source": "telegram"},
     )
     assert second.status_code == 200, second.text
-    partner_file = await client.get(
+    partner_file = await partner.get(
         f"/api/v1/partner/offers/{offer_id}/promo-materials/{qr['id']}/image"
     )
     assert partner_file.status_code == 200

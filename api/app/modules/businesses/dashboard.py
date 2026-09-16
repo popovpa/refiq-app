@@ -10,6 +10,7 @@ from app.modules.links.models import Click, TrackingLink
 from app.modules.offers.models import Offer, OfferPartnerAccess
 from app.modules.offers.service import cr as conversion_rate
 from app.modules.partners.models import BusinessPartner, PartnerProfile
+from app.modules.partners.privacy import partner_public_display_name_from
 from app.modules.postback.credential_service import PostbackCredentialService
 from app.modules.sdk.service import SdkCredentialService
 from app.modules.users.models import User
@@ -233,7 +234,7 @@ async def _timeseries(db: AsyncSession, business_id: int, date_range: ResolvedDa
 async def _recent_conversions(db: AsyncSession, business_id: int, start: datetime, end: datetime) -> list[dict]:
     rows = (
         await db.execute(
-            select(Conversion, Offer.name, PartnerProfile.display_name, User.email)
+            select(Conversion, Offer.name, PartnerProfile, User)
             .join(Offer, Conversion.offer_id == Offer.id)
             .outerjoin(PartnerProfile, Conversion.partner_id == PartnerProfile.id)
             .outerjoin(User, PartnerProfile.user_id == User.id)
@@ -251,12 +252,14 @@ async def _recent_conversions(db: AsyncSession, business_id: int, start: datetim
             "id": conversion.id,
             "offer_id": conversion.offer_id,
             "offer_name": offer_name,
-            "partner_name": partner_name or email,
+            "partner_name": (
+                partner_public_display_name_from(profile, user) if profile is not None else None
+            ),
             "amount": float(conversion.amount),
             "status": conversion.status,
             "created_at": conversion.created_at.isoformat() if conversion.created_at else None,
         }
-        for conversion, offer_name, partner_name, email in rows
+        for conversion, offer_name, profile, user in rows
     ]
 
 
@@ -410,12 +413,15 @@ async def _top_partners(
         return []
     name_rows = (
         await db.execute(
-            select(PartnerProfile.id, PartnerProfile.display_name, User.email)
+            select(PartnerProfile, User)
             .join(User, PartnerProfile.user_id == User.id)
             .where(PartnerProfile.id.in_(ranked_ids))
         )
     ).all()
-    names = {partner_id: display_name or email for partner_id, display_name, email in name_rows}
+    names = {
+        profile.id: partner_public_display_name_from(profile, user)
+        for profile, user in name_rows
+    }
     return [
         {
             "id": partner_id,

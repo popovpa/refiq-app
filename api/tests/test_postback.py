@@ -5,40 +5,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.conversions.models import Conversion
 from app.modules.links.models import Click
-from tests.helpers import become_partner, register_business
+from tests.helpers import create_partner_link, offer_payload, partner_with_access, register_business
 
 
 async def _setup_click(client: AsyncClient, db: AsyncSession, email: str) -> str:
     await register_business(client, email)
-    offer = await client.post("/api/v1/business/offers", json={
-        "name": "CRM Pro",
-        "product_url": "https://crmpro.example.com/pricing",
-        "status": "active",
-        "access_policy": "open",
-        "visibility": "public",
-        "commission_type": "percent",
-        "commission_value": 10,
-    })
+    offer = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="CRM Pro",
+        product_url="https://crmpro.example.com/pricing",
+        status="active",
+        access_policy="open",
+        visibility="public",
+        commission_type="percent",
+        commission_value=10,
+        allowed_traffic=["seo", "telegram"],
+    ))
     assert offer.status_code == 200
     offer_id = offer.json()["id"]
 
-    await become_partner(client, "Postback Partner")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    join = await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    assert join.status_code == 200
-
-    created = await client.post("/api/v1/partner/links", json={
-        "offer_id": offer_id,
-        "name": "Telegram",
-        "traffic_source": "telegram",
-    })
-    assert created.status_code == 200
-    short_code = created.json()["short_code"]
+    partner = await partner_with_access(offer_id, f"{email}.partner")
+    created = await create_partner_link(partner, offer_id)
+    short_code = created["short_code"]
 
     redirected = await client.get(f"/go/{short_code}", follow_redirects=False)
     assert redirected.status_code == 302
-
-    await client.post("/api/v1/me/context", json={"role": "business"})
     db.expire_all()
     result = await db.execute(select(Click).order_by(Click.id.desc()))
     click = result.scalars().first()

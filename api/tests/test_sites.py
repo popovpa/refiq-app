@@ -7,7 +7,7 @@ from app.modules.sites.backfill import backfill_sites
 from app.modules.sites.domain import hostname_from_url, normalize_site_input
 from app.modules.sites.models import Site
 from tests.conftest import engine
-from tests.helpers import become_partner, register_business
+from tests.helpers import create_partner_link, offer_payload, partner_with_access, register_business
 
 
 def test_normalize_site_input_strips_path_query_and_scheme():
@@ -117,25 +117,19 @@ async def test_cannot_delete_site_used_by_tracking_link(client: AsyncClient):
 
     offer = await client.post(
         "/api/v1/business/offers",
-        json={
-            "name": "CRM Pro",
-            "product_url": "https://crmpro.example.com/pricing",
-            "status": "active",
-            "access_policy": "open",
-            "visibility": "public",
-        },
+        json=offer_payload(
+            name="CRM Pro",
+            product_url="https://crmpro.example.com/pricing",
+            status="active",
+            access_policy="open",
+            visibility="public",
+            allowed_traffic=["seo", "telegram"],
+        ),
     )
     offer_id = offer.json()["id"]
-    await become_partner(client, "Site Owner")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    created = await client.post(
-        "/api/v1/partner/links",
-        json={"offer_id": offer_id, "name": "TG", "traffic_source": "telegram"},
-    )
-    assert created.status_code == 200
-
-    await client.post("/api/v1/me/context", json={"role": "business"})
+    partner = await partner_with_access(offer_id, "sites-used-partner@example.com", "Site Owner")
+    created = await create_partner_link(partner, offer_id, name="TG")
+    assert created["id"]
     blocked = await client.delete(f"/api/v1/business/sites/{site_id}")
     assert blocked.status_code == 409
     assert blocked.json()["error"]["code"] == "SITE_IN_USE"
@@ -159,26 +153,19 @@ async def test_tracking_link_matches_site_and_unknown_host_does_not_block(client
 
     offer = await client.post(
         "/api/v1/business/offers",
-        json={
-            "name": "CRM Pro",
-            "product_url": "https://crmpro.example.com/pricing",
-            "status": "active",
-            "access_policy": "open",
-            "visibility": "public",
-        },
+        json=offer_payload(
+            name="CRM Pro",
+            product_url="https://crmpro.example.com/pricing",
+            status="active",
+            access_policy="open",
+            visibility="public",
+            allowed_traffic=["seo", "telegram"],
+        ),
     )
     offer_id = offer.json()["id"]
-    await become_partner(client, "Matcher")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    created = await client.post(
-        "/api/v1/partner/links",
-        json={"offer_id": offer_id, "name": "TG", "traffic_source": "telegram"},
-    )
-    assert created.status_code == 200
-    link_id = created.json()["id"]
-
-    await client.post("/api/v1/me/context", json={"role": "business"})
+    partner = await partner_with_access(offer_id, "sites-match-partner@example.com", "Matcher")
+    created = await create_partner_link(partner, offer_id, name="TG")
+    link_id = created["id"]
     matched = await client.get(f"/api/v1/business/offers/{offer_id}/links/{link_id}")
     assert matched.status_code == 200
     assert matched.json()["site_missing"] is False

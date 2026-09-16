@@ -13,7 +13,7 @@ from app.modules.links.destination import assert_destination_allowed
 from app.modules.links.models import TrackingLink
 from app.modules.offers.models import Offer
 from app.modules.offers.service import offer_link_stats
-from app.modules.partners.models import PartnerProfile
+from app.modules.partners.privacy import load_partner_public_name
 from app.modules.promotion.links import create_tracking_link
 from app.modules.promotion.ownership import assert_offer_allows_new_promotion, require_offer_for_business, serialize_link
 from app.modules.system.audit import actor_display_name, write_audit_log
@@ -183,10 +183,8 @@ async def get_business_link(
         link_id=link_id,
         business_id=parse_id(session_data["active_business_id"]),
     )
-    profile = (
-        await db.execute(select(PartnerProfile).where(PartnerProfile.id == link.partner_id))
-    ).scalar_one_or_none()
-    payload = _serialize_business_link(link, profile.display_name if profile else None)
+    partner_name = await load_partner_public_name(db, link.partner_id)
+    payload = _serialize_business_link(link, partner_name)
     payload["offer_name"] = offer.name
     return await _with_site_match(db, parse_id(session_data["active_business_id"]), payload)
 
@@ -206,11 +204,9 @@ async def update_business_link_destination(
         link_id=link_id,
         business_id=business_id,
     )
+    partner_name = await load_partner_public_name(db, link.partner_id)
     new_url = await assert_destination_allowed(db, business_id=business_id, url=data.destination_url)
     old_url = link.destination_url
-    profile = (
-        await db.execute(select(PartnerProfile).where(PartnerProfile.id == link.partner_id))
-    ).scalar_one_or_none()
     if old_url != new_url:
         user = (
             await db.execute(select(User).where(User.id == parse_id(session_data["user_id"])))
@@ -228,7 +224,7 @@ async def update_business_link_destination(
                 "actor_name": actor_display_name(user),
             },
         )
-    payload = _serialize_business_link(link, profile.display_name if profile else None)
+    payload = _serialize_business_link(link, partner_name)
     payload["offer_name"] = offer.name
     return await _with_site_match(db, business_id, payload)
 

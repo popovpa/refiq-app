@@ -5,6 +5,7 @@ from app.core.database import get_db
 from app.core.ids import parse_id, parse_optional_id
 from app.core.permissions import get_session_data
 from app.modules.notifications.service import NotificationService
+from app.modules.partners.privacy import scrub_partner_contacts
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ def _scope(session_data: dict) -> dict:
 
 
 def _serialize(item) -> dict:
-    return {
+    payload = {
         "id": item.id,
         "type": item.type,
         "severity": item.severity,
@@ -34,6 +35,9 @@ def _serialize(item) -> dict:
         "business_id": item.business_id,
         "partner_id": item.partner_id,
     }
+    if item.role_context == "business":
+        payload["metadata"] = scrub_partner_contacts(payload["metadata"])
+    return payload
 
 
 @router.get("/unread-count")

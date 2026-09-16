@@ -7,6 +7,7 @@ import { Button } from '@/shared/components/Button';
 import { Skeleton } from '@/shared/components/Skeleton';
 import { useToast } from '@/shared/components/Toast';
 import { OfferImage } from '@/shared/offers/OfferImage';
+import { normalizeTrafficSource } from '@/shared/catalog/trafficSources';
 import { TRAFFIC_TYPES, trafficLabel } from '@/shared/offers/labels';
 import {
   formatCommissionContext,
@@ -47,12 +48,10 @@ function isEligibleOffer(offer: LinkOfferOption): boolean {
 
 function trafficOptionsForOffer(offer?: LinkOfferOption | null) {
   if (!offer) return [];
-  const forbidden = new Set(offer.forbidden_traffic || []);
-  const allowed = offer.allowed_traffic || [];
-  const base = allowed.length
-    ? TRAFFIC_TYPES.filter((item) => allowed.includes(item.value))
-    : TRAFFIC_TYPES;
-  return base.filter((item) => !forbidden.has(item.value));
+  const allowed = new Set(
+    (offer.allowed_traffic || []).map((item) => normalizeTrafficSource(item) || item),
+  );
+  return TRAFFIC_TYPES.filter((item) => allowed.has(item.value));
 }
 
 function offerCommissionLine(offer: LinkOfferOption): string {
@@ -70,7 +69,12 @@ function createLinkErrorMessage(error: unknown): string {
   const code = apiError?.error?.code;
   const message = apiError?.error?.message;
 
-  if (code === 'OFFER_UNAVAILABLE' || code === 'OFFER_APPROVAL_REQUIRED' || code === 'TRAFFIC_SOURCE_FORBIDDEN') {
+  if (
+    code === 'OFFER_UNAVAILABLE' ||
+    code === 'OFFER_APPROVAL_REQUIRED' ||
+    code === 'TRAFFIC_SOURCE_FORBIDDEN' ||
+    code === 'TRAFFIC_SOURCE_NOT_ALLOWED'
+  ) {
     return message || 'Не удалось создать ссылку. Попробуйте ещё раз.';
   }
   if (code === 'OFFER_LANDING_MISSING' && typeof message === 'string') {

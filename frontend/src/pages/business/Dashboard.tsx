@@ -18,6 +18,7 @@ import { StatCard } from '@/shared/components/StatCard';
 import { tabClass } from '@/shared/offers/labels';
 import { cn } from '@/shared/utils/cn';
 import { formatMoney, formatNumber } from '@/shared/utils/format';
+import { partnerDisplayName } from '@/shared/partners/displayName';
 import { PageHeading } from '@/shared/dateRange/PageHeading';
 import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 import {
@@ -313,7 +314,7 @@ export function BusinessDashboard() {
                           <div className="min-w-0">
                             <p className="text-sm font-medium truncate">{item.offer_name}</p>
                             <p className="text-xs text-muted-foreground truncate">
-                              {item.partner_name || 'Свой трафик'} · {formatDateTime(item.created_at)}
+                              {partnerDisplayName(item.partner_name) || 'Свой трафик'} · {formatDateTime(item.created_at)}
                             </p>
                           </div>
                           <div className="text-right shrink-0">
@@ -382,7 +383,7 @@ export function BusinessDashboard() {
           columns={['Партнёр', 'Офферы', 'Конверсии', 'CR', 'Продажи']}
           rows={data.top_partners.map((item) => ({
             id: item.id,
-            cells: [item.name, formatNumber(item.offers), formatNumber(item.conversions), formatCr(item.cr), formatMoney(item.sales)],
+            cells: [partnerDisplayName(item.name, item.id), formatNumber(item.offers), formatNumber(item.conversions), formatCr(item.cr), formatMoney(item.sales)],
             hideOnMobile: [false, true, false, true, false],
             onOpen: () => navigate('/business/partners'),
           }))}

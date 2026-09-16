@@ -7,20 +7,21 @@ from app.modules.commissions.models import Commission
 from app.modules.conversions.models import Conversion
 from app.modules.links.models import Click
 from tests.conftest import fastapi_app
-from tests.helpers import become_partner, register_business, register_user
+from tests.helpers import become_partner, offer_payload, register_business, register_user
 
 
 async def _create_active_offer(client: AsyncClient, email: str) -> str:
     await register_business(client, email)
-    offer = await client.post("/api/v1/business/offers", json={
-        "name": "CRM Pro",
-        "product_url": "https://crmpro.example.com/pricing",
-        "status": "active",
-        "access_policy": "open",
-        "visibility": "public",
-        "commission_type": "percent",
-        "commission_value": 10,
-    })
+    offer = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="CRM Pro",
+        product_url="https://crmpro.example.com/pricing",
+        status="active",
+        access_policy="open",
+        visibility="public",
+        commission_type="percent",
+        commission_value=10,
+        allowed_traffic=["seo", "telegram"],
+    ))
     assert offer.status_code == 200, offer.text
     return str(offer.json()["id"])
 
@@ -195,7 +196,7 @@ async def test_cannot_mix_business_and_partner_campaign_ownership(client: AsyncC
         mixed = await partner.post("/api/v1/partner/links", json={
             "offer_id": int(offer_id),
             "name": "Wrong",
-            "traffic_source": "content",
+            "traffic_source": "telegram",
             "campaign_id": business_campaign_id,
         })
         assert mixed.status_code == 403

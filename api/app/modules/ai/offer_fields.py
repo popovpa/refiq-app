@@ -1,6 +1,9 @@
-CATEGORIES = ["SaaS", "Fintech", "Education", "E-commerce", "Marketing", "Other"]
-GEO_OPTIONS = ["WW", "RU", "KZ", "BY", "UA", "US", "EU"]
-TRAFFIC_TYPES = ["seo", "content", "social", "youtube", "telegram", "email", "ppc"]
+from app.modules.catalog.data import LEGACY_CATEGORY_MAP, category_codes
+from app.modules.catalog.traffic import LEGACY_TRAFFIC_MAP, traffic_codes
+
+CATEGORIES = [*LEGACY_CATEGORY_MAP.keys(), *category_codes()]
+GEO_OPTIONS = ["RU", "KZ", "BY", "UA", "US"]
+TRAFFIC_TYPES = [*LEGACY_TRAFFIC_MAP.keys(), *traffic_codes()]
 CONVERSION_TYPES = ["sale", "signup", "lead", "application", "custom"]
 ACCESS_POLICIES = ["open", "approval", "invite_only"]
 COMMISSION_TYPES = ["percent", "fixed"]

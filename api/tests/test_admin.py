@@ -6,7 +6,7 @@ from app.admin.auth.service import AdminAuthService
 from app.modules.links.models import Click
 from sqlalchemy import select
 from tests.conftest import TestingSessionLocal
-from tests.helpers import become_partner, register_business
+from tests.helpers import create_partner_link, offer_payload, partner_with_access, register_business
 
 
 ADMIN_PASSWORD = "admin-pass-word-1"
@@ -72,24 +72,22 @@ async def test_search_exact_rqcid_and_short_code(client: AsyncClient, admin_clie
     await register_business(client, "admin-search@example.com")
     offer = await client.post(
         "/api/v1/business/offers",
-        json={
-            "name": "CRM Pro",
-            "product_url": "https://crmpro.example.com/pricing",
-            "status": "active",
-            "access_policy": "open",
-            "visibility": "public",
-            "commission_type": "percent",
-            "commission_value": 10,
-        },
+        json=offer_payload(
+            name="CRM Pro",
+            product_url="https://crmpro.example.com/pricing",
+            status="active",
+            access_policy="open",
+            visibility="public",
+            commission_type="percent",
+            commission_value=10,
+            allowed_traffic=["seo", "telegram"],
+        ),
     )
     assert offer.status_code == 200
     offer_id = offer.json()["id"]
-    await become_partner(client, "Search Partner")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    created = await client.post("/api/v1/partner/links", json={"offer_id": offer_id, "name": "Telegram", "traffic_source": "telegram"})
-    assert created.status_code == 200
-    short_code = created.json()["short_code"]
+    partner = await partner_with_access(offer_id, "admin-search-partner@example.com", "Search Partner")
+    created_link = await create_partner_link(partner, offer_id)
+    short_code = created_link["short_code"]
     redirected = await client.get(f"/go/{short_code}", follow_redirects=False)
     assert redirected.status_code == 302
     db.expire_all()
@@ -150,27 +148,24 @@ async def test_clicks_pagination_and_postback_attempt(client: AsyncClient, admin
     await register_business(client, "admin-pb@example.com")
     offer = await client.post(
         "/api/v1/business/offers",
-        json={
-            "name": "CRM Pro",
-            "product_url": "https://crmpro.example.com/pricing",
-            "status": "active",
-            "access_policy": "open",
-            "visibility": "public",
-            "commission_type": "percent",
-            "commission_value": 10,
-        },
+        json=offer_payload(
+            name="CRM Pro",
+            product_url="https://crmpro.example.com/pricing",
+            status="active",
+            access_policy="open",
+            visibility="public",
+            commission_type="percent",
+            commission_value=10,
+            allowed_traffic=["seo", "telegram"],
+        ),
     )
     offer_id = offer.json()["id"]
-    await become_partner(client, "PB Partner")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    created = await client.post("/api/v1/partner/links", json={"offer_id": offer_id, "name": "Ads", "traffic_source": "ads"})
-    short_code = created.json()["short_code"]
+    partner = await partner_with_access(offer_id, "admin-pb-partner@example.com", "PB Partner")
+    created = await create_partner_link(partner, offer_id, name="Ads")
+    short_code = created["short_code"]
     await client.get(f"/go/{short_code}", follow_redirects=False)
     db.expire_all()
     click = (await db.execute(select(Click).order_by(Click.id.desc()))).scalars().first()
-
-    await client.post("/api/v1/me/context", json={"role": "business"})
     token = await client.post("/api/v1/business/postback/credential")
     assert token.status_code == 200
     await client.post(
@@ -204,22 +199,21 @@ async def test_inactive_offer_blocks_link_activation(client: AsyncClient, admin_
     await register_business(client, "admin-link@example.com")
     offer = await client.post(
         "/api/v1/business/offers",
-        json={
-            "name": "Paused Offer",
-            "product_url": "https://crmpro.example.com/pricing",
-            "status": "active",
-            "access_policy": "open",
-            "visibility": "public",
-            "commission_type": "percent",
-            "commission_value": 10,
-        },
+        json=offer_payload(
+            name="Paused Offer",
+            product_url="https://crmpro.example.com/pricing",
+            status="active",
+            access_policy="open",
+            visibility="public",
+            commission_type="percent",
+            commission_value=10,
+            allowed_traffic=["seo", "telegram"],
+        ),
     )
     offer_id = offer.json()["id"]
-    await become_partner(client, "Link Partner")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    created = await client.post("/api/v1/partner/links", json={"offer_id": offer_id, "name": "Ads", "traffic_source": "ads"})
-    link_id = created.json()["id"]
+    partner = await partner_with_access(offer_id, "admin-link-partner@example.com", "Link Partner")
+    created = await create_partner_link(partner, offer_id, name="Ads")
+    link_id = created["id"]
 
     await _login(admin_client, email="link-admin@refiq.ru")
     await admin_client.post(f"/api/admin/v1/offers/{offer_id}/pause", json={"reason": "Broken landing"})
@@ -251,36 +245,28 @@ async def _seed_admin_filter_funnel(
     assert site.status_code == 200, site.text
     offer = await client.post(
         "/api/v1/business/offers",
-        json={
-            "name": offer_name,
-            "product_url": f"{site_url.rstrip('/')}/pricing",
-            "status": "active",
-            "access_policy": "open",
-            "visibility": "public",
-            "commission_type": "percent",
-            "commission_value": 10,
-        },
+        json=offer_payload(
+            name=offer_name,
+            product_url=f"{site_url.rstrip('/')}/pricing",
+            status="active",
+            access_policy="open",
+            visibility="public",
+            commission_type="percent",
+            commission_value=10,
+            allowed_traffic=["seo", "telegram"],
+        ),
     )
     assert offer.status_code == 200, offer.text
     offer_id = offer.json()["id"]
 
-    await become_partner(client, f"{name} Partner")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    joined = await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    assert joined.status_code == 200, joined.text
-    created = await client.post(
-        "/api/v1/partner/links",
-        json={"offer_id": offer_id, "name": "Ads", "traffic_source": "ads"},
-    )
-    assert created.status_code == 200, created.text
-    redirected = await client.get(f"/go/{created.json()['short_code']}", follow_redirects=False)
+    partner = await partner_with_access(offer_id, f"{email}.partner", f"{name} Partner")
+    created = await create_partner_link(partner, offer_id, name="Ads")
+    redirected = await client.get(f"/go/{created['short_code']}", follow_redirects=False)
     assert redirected.status_code == 302
 
     db.expire_all()
     click = (await db.execute(select(Click).order_by(Click.id.desc()))).scalars().first()
     assert click is not None
-
-    await client.post("/api/v1/me/context", json={"role": "business"})
     token = await client.post("/api/v1/business/postback/credential")
     assert token.status_code == 200, token.text
     postback = await client.post(
@@ -295,7 +281,7 @@ async def _seed_admin_filter_funnel(
         "business_name": name,
         "site_id": int(site.json()["id"]),
         "offer_id": int(offer_id),
-        "link_id": int(created.json()["id"]),
+        "link_id": int(created["id"]),
         "rqcid": click.rqcid,
     }
 

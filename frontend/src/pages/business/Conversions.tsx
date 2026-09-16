@@ -7,6 +7,7 @@ import { Button } from '@/shared/components/Button';
 import { useToast } from '@/shared/components/Toast';
 import { cn } from '@/shared/utils/cn';
 import { formatMoney } from '@/shared/utils/format';
+import { partnerDisplayName } from '@/shared/partners/displayName';
 import { DateRangeSelector } from '@/shared/dateRange/DateRangeSelector';
 import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 
@@ -181,7 +182,7 @@ export function BusinessConversions() {
                     </td>
                     <td>
                       <div className="flex flex-col gap-0.5">
-                        <span>{conv.partner_name || 'Свой трафик'}</span>
+                        <span>{partnerDisplayName(conv.partner_name, conv.partner_id) || 'Свой трафик'}</span>
                         {conv.source_owner === 'business' && conv.partner_name && (
                           <span className="text-xs text-muted-foreground">клик: свой, атрибуция партнёру</span>
                         )}

@@ -28,6 +28,8 @@ import {
 import { OfferOverview, OfferOverviewSkeleton, offerKpiTrends } from './OfferOverview';
 import { OfferPromotionTab } from './OfferPromotionTab';
 import type { BusinessOfferDetailData } from './offerDetailTypes';
+import { partnerDisplayName } from '@/shared/partners/displayName';
+import { PartnerPublicProfileDialog } from '@/shared/partners/PartnerPublicProfileDialog';
 
 const partnerStatus: Record<string, { label: string; className: string }> = {
   approved: { label: 'Активен', className: 'bg-accent text-primary' },
@@ -59,6 +61,9 @@ export function BusinessOfferDetail() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [selectedLink, setSelectedLink] = useState<BusinessPromotionLink | null>(null);
   const [editDestination, setEditDestination] = useState(false);
+  const [profilePartnerId, setProfilePartnerId] = useState<number | null>(null);
+  const [rejectRow, setRejectRow] = useState<{ id: number; name: string } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
   const range = useDateRange();
   const { data: offer, isLoading } = useQuery<BusinessOfferDetailData>({
@@ -92,11 +97,15 @@ export function BusinessOfferDetail() {
   });
 
   const decide = useMutation({
-    mutationFn: ({ accessId, action }: { accessId: number; action: 'approve' | 'reject' }) =>
-      api.post(`/business/offers/${id}/partners/${accessId}/${action}`),
+    mutationFn: ({ accessId, action, reason }: { accessId: number; action: 'approve' | 'reject'; reason?: string }) =>
+      action === 'reject'
+        ? api.post(`/business/offers/${id}/partners/${accessId}/reject`, { reason })
+        : api.post(`/business/offers/${id}/partners/${accessId}/approve`),
     onSuccess: () => {
       invalidate();
       addToast('Заявка обработана', 'success');
+      setRejectRow(null);
+      setRejectReason('');
     },
     onError: () => addToast('Не удалось обработать заявку', 'error'),
   });
@@ -267,7 +276,9 @@ export function BusinessOfferDetail() {
               <thead>
                 <tr>
                   <th>Партнёр</th>
+                  <th>Оффер</th>
                   <th>Статус</th>
+                  <th>Дата заявки</th>
                   <th className="text-right">Клики</th>
                   <th className="text-right">Конверсии</th>
                   <th className="text-right">CR</th>
@@ -281,33 +292,35 @@ export function BusinessOfferDetail() {
                   return (
                     <tr key={row.id}>
                       <td>
-                        <p className="font-medium">{row.name}</p>
-                        <p className="text-xs text-muted-foreground">{row.email}</p>
-                        {row.status === 'pending' && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {[row.geo, row.topics, (row.traffic_sources || []).join(', ')].filter(Boolean).join(' · ')}
-                            {row.comment ? ` · ${row.comment}` : ''}
-                          </p>
-                        )}
+                        <p className="font-medium">{partnerDisplayName(row.name, row.partner_id)}</p>
                       </td>
+                      <td className="max-w-[180px] truncate">{offer.name}</td>
                       <td>
                         <span className={cn('ui-badge', badge.className)}>{badge.label}</span>
+                      </td>
+                      <td className="whitespace-nowrap text-muted-foreground">
+                        {row.created_at ? new Date(row.created_at).toLocaleDateString('ru-RU') : '—'}
                       </td>
                       <td className="text-right">{formatNumber(row.clicks)}</td>
                       <td className="text-right">{formatNumber(row.conversions)}</td>
                       <td className="text-right">{formatNumber(row.cr)}%</td>
                       <td className="text-right">{formatMoney(row.commissions)}</td>
                       <td className="text-right">
-                        {row.status === 'pending' && (
-                          <div className="inline-flex gap-2">
-                            <Button size="sm" variant="secondary" onClick={() => decide.mutate({ accessId: row.id, action: 'reject' })}>
-                              Отклонить
-                            </Button>
-                            <Button size="sm" onClick={() => decide.mutate({ accessId: row.id, action: 'approve' })}>
-                              Одобрить
-                            </Button>
-                          </div>
-                        )}
+                        <div className="inline-flex flex-wrap justify-end gap-2">
+                          <Button size="sm" variant="ghost" onClick={() => setProfilePartnerId(row.partner_id)}>
+                            Открыть профиль партнёра
+                          </Button>
+                          {row.status === 'pending' && (
+                            <>
+                              <Button size="sm" variant="secondary" onClick={() => setRejectRow({ id: row.id, name: row.name })}>
+                                Отклонить
+                              </Button>
+                              <Button size="sm" onClick={() => decide.mutate({ accessId: row.id, action: 'approve' })}>
+                                Разрешить продвижение
+                              </Button>
+                            </>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -334,7 +347,6 @@ export function BusinessOfferDetail() {
             <Info label="Доступ" value={accessLabel(offer.access_policy)} />
             <Info label="GEO" value={offer.geo || '—'} />
             <Info label="Разрешённый трафик" value={(offer.allowed_traffic || []).map(trafficLabel).join(', ') || '—'} />
-            <Info label="Запрещённый трафик" value={(offer.forbidden_traffic || []).map(trafficLabel).join(', ') || '—'} />
           </div>
           {offer.partner_notes && (
             <div>
@@ -399,6 +411,42 @@ export function BusinessOfferDetail() {
         />
       )}
 
+      {profilePartnerId != null && (
+        <PartnerPublicProfileDialog partnerId={profilePartnerId} onClose={() => setProfilePartnerId(null)} />
+      )}
+      {rejectRow && (
+        <ConfirmDialog
+          title="Отклонить заявку"
+          confirmLabel="Отклонить"
+          confirmVariant="destructive"
+          pending={decide.isPending}
+          pendingLabel="Отклонение..."
+          confirmDisabled={!rejectReason.trim()}
+          onClose={() => {
+            setRejectRow(null);
+            setRejectReason('');
+          }}
+          onConfirm={() => {
+            if (!rejectReason.trim()) return;
+            decide.mutate({ accessId: rejectRow.id, action: 'reject', reason: rejectReason.trim() });
+          }}
+        >
+          <p>
+            Отклонить заявку партнёра{' '}
+            <span className="font-medium text-foreground">{partnerDisplayName(rejectRow.name)}</span> на оффер «{offer.name}».
+          </p>
+          <label className="block">
+            <span className="ui-label text-foreground">Причина отказа</span>
+            <textarea
+              className="ui-input min-h-[88px] h-auto py-2 mt-1.5"
+              value={rejectReason}
+              maxLength={1000}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Укажите причину отказа"
+            />
+          </label>
+        </ConfirmDialog>
+      )}
       {inviteOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-foreground/30" onClick={() => setInviteOpen(false)} />

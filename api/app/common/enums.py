@@ -70,6 +70,14 @@ class CommissionType(StrEnum):
     FIXED = "fixed"
 
 
+class HoldPeriodDays(StrEnum):
+    ZERO = "0"
+    THREE = "3"
+    SEVEN = "7"
+    FOURTEEN = "14"
+    THIRTY = "30"
+
+
 class OfferPartnerStatus(StrEnum):
     PENDING = "pending"
     APPROVED = "approved"

@@ -15,7 +15,7 @@ import { OfferImage } from '@/shared/offers/OfferImage';
 import { OfferAiSplitButton } from '@/shared/offers/OfferAiSplitButton';
 import {
   ACCESS_OPTIONS,
-  CATEGORIES,
+  CATEGORY_FILTERS,
   OFFER_STATUSES,
   accessLabel,
   statusBadge,
@@ -104,9 +104,9 @@ export function BusinessOffers() {
         </select>
         <select className="ui-input w-auto h-9" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">Категория</option>
-          {CATEGORIES.map((item) => (
-            <option key={item} value={item}>
-              {item}
+          {CATEGORY_FILTERS.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
             </option>
           ))}
         </select>

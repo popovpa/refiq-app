@@ -16,7 +16,7 @@ from app.modules.brand_kits.models import BrandKit
 from app.modules.creatives.models import Creative
 from app.modules.creatives.policy import CreativePolicyValidator
 from app.modules.offers.models import Offer
-from tests.helpers import become_partner, register_business, register_user
+from tests.helpers import become_partner, partner_with_access, register_business, register_user
 
 TEXT_VARIANTS = {
     "variants": [
@@ -284,11 +284,9 @@ async def test_partner_private_creative_visibility(client: AsyncClient):
     pub_id = published.json()["id"]
     await client.post(f"/api/v1/business/offers/{offer_id}/creatives/{pub_id}/publish")
 
-    await _switch_partner(client, "Партнёр А")
-    join = await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    assert join.status_code == 200, join.text
+    partner = await partner_with_access(offer_id, "creative-partner-a@example.com", "Партнёр А")
 
-    mine = await client.post(
+    mine = await partner.post(
         f"/api/v1/partner/offers/{offer_id}/creatives",
         json={"type": "text", "headline": "Мой пост", "body": "Приватный", "cta": "Перейти"},
     )
@@ -297,7 +295,7 @@ async def test_partner_private_creative_visibility(client: AsyncClient):
     assert mine.json()["partner_id"]
     assert mine.json()["status"] == "active"
 
-    listed = await client.get(f"/api/v1/partner/offers/{offer_id}/creatives")
+    listed = await partner.get(f"/api/v1/partner/offers/{offer_id}/creatives")
     ids = {item["id"] for item in listed.json()["items"]}
     assert pub_id in ids
     assert private_id in ids

@@ -7,9 +7,8 @@ import {
   ACCESS_OPTIONS,
   ATTRIBUTION_MODEL_HINT,
   ATTRIBUTION_MODEL_LABEL,
-  CATEGORIES,
+  CATEGORY_FILTERS,
   CONVERSION_OPTIONS,
-  GEO_OPTIONS,
   TRAFFIC_TYPES,
   trafficLabel,
 } from '@/shared/offers/labels';
@@ -42,9 +41,13 @@ export function OfferForm({
   const set = <K extends keyof OfferFormValues>(key: K, value: OfferFormValues[K]) =>
     onChange({ ...form, [key]: value });
 
-  const toggleTraffic = (list: 'allowed_traffic' | 'forbidden_traffic', value: string) => {
-    const current = form[list];
-    set(list, current.includes(value) ? current.filter((item) => item !== value) : [...current, value]);
+  const toggleTraffic = (value: string) => {
+    set(
+      'allowed_traffic',
+      form.allowed_traffic.includes(value)
+        ? form.allowed_traffic.filter((item) => item !== value)
+        : [...form.allowed_traffic, value],
+    );
   };
 
   return (
@@ -67,9 +70,10 @@ export function OfferForm({
           </OfferField>
           <OfferField label="Категория" required aiMark={aiMarked?.category}>
             <select className="ui-input" value={form.category} onChange={(e) => set('category', e.target.value)}>
-              {CATEGORIES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
+              <option value="">Выберите категорию</option>
+              {CATEGORY_FILTERS.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
                 </option>
               ))}
             </select>
@@ -253,43 +257,21 @@ export function OfferForm({
               ))}
             </select>
           </OfferField>
-          <OfferField label="GEO" aiMark={aiMarked?.geo}>
-            <select className="ui-input" value={form.geo} onChange={(e) => set('geo', e.target.value)}>
-              {GEO_OPTIONS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
+          <OfferField label="GEO">
+            <input
+              className="ui-input"
+              value={form.geo_countries.join(',')}
+              onChange={(e) => set('geo_countries', e.target.value.split(',').map((item) => item.trim()).filter(Boolean))}
+            />
           </OfferField>
         </div>
 
         <OfferField label="Разрешённый трафик" aiMark={aiMarked?.allowed_traffic}>
           <TrafficMultiSelect
             selected={form.allowed_traffic}
-            onToggle={(value) => toggleTraffic('allowed_traffic', value)}
+            onToggle={(value) => toggleTraffic(value)}
             onRemove={(value) => set('allowed_traffic', form.allowed_traffic.filter((item) => item !== value))}
           />
-        </OfferField>
-
-        <OfferField label="Запрещённый трафик" aiMark={aiMarked?.forbidden_traffic}>
-          <div className="flex flex-wrap gap-1.5">
-            {TRAFFIC_TYPES.map((item) => (
-              <button
-                key={`f-${item.value}`}
-                type="button"
-                onClick={() => toggleTraffic('forbidden_traffic', item.value)}
-                className={cn(
-                  'px-2.5 py-1 rounded-md text-xs font-medium border transition-colors',
-                  form.forbidden_traffic.includes(item.value)
-                    ? 'bg-red-50 text-red-700 border-red-100'
-                    : 'bg-card text-muted-foreground border-border hover:text-foreground',
-                )}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
         </OfferField>
 
         <OfferField

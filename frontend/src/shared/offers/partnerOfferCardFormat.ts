@@ -1,13 +1,23 @@
+import { findCategory, resolveCategoryCode } from '@/shared/catalog/categories';
 import type { CommissionRule, OfferListItem } from '@/shared/offers/types';
 import { conversionLabel } from '@/shared/offers/labels';
 import { formatNumber } from '@/shared/utils/format';
 
+export const OFFER_CARD_TITLE_MAX = 80;
+export const OFFER_CARD_METRIC_EMPTY = '-';
+
 const CONVERSION_CONTEXT: Record<string, { percent: string; fixed: string }> = {
-  sale: { percent: 'с покупки', fixed: 'за покупку' },
+  sale: { percent: 'с продажи', fixed: 'за покупку' },
   signup: { percent: 'с регистрации', fixed: 'за регистрацию' },
-  lead: { percent: 'с одобренного лида', fixed: 'за одобренный лид' },
+  lead: { percent: 'с заявки', fixed: 'за подтвержденный лид' },
   application: { percent: 'с одобренной заявки', fixed: 'за одобренную заявку' },
   custom: { percent: 'с конверсии', fixed: 'за конверсию' },
+};
+
+const CARD_ACCESS_LABEL: Record<string, string> = {
+  open: 'Публичный',
+  approval: 'После одобрения',
+  invite_only: 'По приглашению',
 };
 
 export const ACCESS_BADGE: Record<string, { label: string; className: string }> = {
@@ -63,6 +73,34 @@ export function accessBadge(accessPolicy: string) {
     label: accessPolicy,
     className: 'bg-muted text-muted-foreground',
   };
+}
+
+export function offerCardTitle(name?: string | null): string {
+  const value = (name || '').trim();
+  if (value.length <= OFFER_CARD_TITLE_MAX) return value;
+  return `${value.slice(0, OFFER_CARD_TITLE_MAX).trimEnd()}…`;
+}
+
+export function offerCardCategoryName(offer: Pick<OfferListItem, 'category' | 'category_code' | 'category_name'>): string | null {
+  if (offer.category_name?.trim()) return offer.category_name.trim();
+  const code = resolveCategoryCode(offer.category_code || offer.category) || offer.category;
+  return findCategory(code)?.nameRu || null;
+}
+
+export function formatOfferGeo(geo?: string | null): string {
+  const value = (geo || '').trim();
+  if (!value || value === 'WW' || value.toLowerCase() === 'worldwide') return 'Весь мир';
+  return value.replace(/,\s*/g, ', ');
+}
+
+export function offerCardAccessLabel(accessPolicy?: string | null): string {
+  if (!accessPolicy) return OFFER_CARD_METRIC_EMPTY;
+  return CARD_ACCESS_LABEL[accessPolicy] || accessPolicy;
+}
+
+export function offerCardMetricValue(value?: string | null): string {
+  if (!value || value === '—') return OFFER_CARD_METRIC_EMPTY;
+  return value;
 }
 
 export function pluralize(count: number, one: string, few: string, many: string): string {

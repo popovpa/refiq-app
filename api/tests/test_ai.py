@@ -150,7 +150,6 @@ async def _create_offer(client: AsyncClient) -> str:
             "attribution_window_days": 30,
             "access_policy": "open",
             "allowed_traffic": ["seo", "telegram"],
-            "forbidden_traffic": ["ppc"],
             "partner_notes": "Без брендовых запросов",
             "status": "draft",
             "product_url": "https://crmpro.example.com",
@@ -180,7 +179,7 @@ async def test_offer_draft_structured_and_not_saved(
     body = response.json()
     assert body["generation_id"]
     assert body["draft"]["name"] == "English for IT"
-    assert body["draft"]["category"] == "Education"
+    assert body["draft"]["category"] == "ONLINE_COURSES"
     assert "destination_url" not in body["draft"]
     assert body["recommendations"]["commission_value"] == 15
 

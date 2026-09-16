@@ -3,7 +3,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.businesses.models import Business, BusinessMembership
-from tests.helpers import become_partner, register_business, register_user
+from tests.helpers import become_partner, offer_payload, register_business, register_user
 
 
 async def _create_offer(
@@ -18,15 +18,16 @@ async def _create_offer(
     await register_business(client, email)
     offer = await client.post(
         "/api/v1/business/offers",
-        json={
-            "name": name,
-            "product_url": "https://own.example.com",
-            "status": status,
-            "access_policy": access_policy,
-            "visibility": visibility,
-            "commission_type": "percent",
-            "commission_value": 10,
-        },
+        json=offer_payload(
+            name=name,
+            product_url="https://own.example.com",
+            status=status,
+            access_policy=access_policy,
+            visibility=visibility,
+            commission_type="percent",
+            commission_value=10,
+            allowed_traffic=["seo", "telegram"],
+        ),
     )
     assert offer.status_code == 200, offer.text
     return str(offer.json()["id"])
@@ -43,15 +44,16 @@ async def _add_offer(
 ) -> str:
     offer = await client.post(
         "/api/v1/business/offers",
-        json={
-            "name": name,
-            "product_url": "https://own.example.com",
-            "status": status,
-            "access_policy": access_policy,
-            "visibility": visibility,
-            "commission_type": "percent",
-            "commission_value": commission_value,
-        },
+        json=offer_payload(
+            name=name,
+            product_url="https://own.example.com",
+            status=status,
+            access_policy=access_policy,
+            visibility=visibility,
+            commission_type="percent",
+            commission_value=commission_value,
+            allowed_traffic=["seo", "telegram"],
+        ),
     )
     assert offer.status_code == 200, offer.text
     return str(offer.json()["id"])

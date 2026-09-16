@@ -42,21 +42,31 @@ class OfferDraftContent(BaseModel):
     @field_validator("category")
     @classmethod
     def category_ok(cls, value: str) -> str:
-        if value not in CATEGORIES:
-            return "Other"
-        return value
+        from app.modules.catalog import resolve_category_code
+
+        return resolve_category_code(value) or "OTHER"
 
     @field_validator("geo")
     @classmethod
     def geo_ok(cls, value: str) -> str:
-        if value not in GEO_OPTIONS:
-            return "RU"
-        return value
+        from app.modules.catalog import parse_geo_codes
+
+        codes = parse_geo_codes(value)
+        return ",".join(codes) if codes else "RU"
 
     @field_validator("allowed_traffic", "forbidden_traffic")
     @classmethod
     def traffic_ok(cls, value: list[str]) -> list[str]:
-        return [item for item in value if item in TRAFFIC_TYPES]
+        from app.modules.catalog import normalize_traffic_source
+
+        result: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            code = normalize_traffic_source(item)
+            if code and code not in seen:
+                seen.add(code)
+                result.append(code)
+        return result
 
 
 class OfferRecommendations(BaseModel):

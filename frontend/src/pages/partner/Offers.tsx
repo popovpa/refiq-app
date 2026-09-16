@@ -10,12 +10,11 @@ import { GetLinkModal } from '@/shared/offers/GetLinkModal';
 import { RequestAccessModal } from '@/shared/offers/RequestAccessModal';
 import {
   ACCESS_OPTIONS,
-  CATEGORIES,
+  CATEGORY_FILTERS,
   GEO_OPTIONS,
   tabClass,
 } from '@/shared/offers/labels';
 import type { OfferListItem } from '@/shared/offers/types';
-import { useAuth } from '@/shared/hooks/useAuth';
 import { usePromoteOwnOffer } from '@/shared/offers/usePromoteOwnOffer';
 
 interface OffersResponse {
@@ -24,7 +23,6 @@ interface OffersResponse {
 
 export function PartnerOffers() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { addToast } = useToast();
   const { promote: promoteOwnOffer, pending: promoteOwnPending } = usePromoteOwnOffer();
   const queryClient = useQueryClient();
@@ -53,15 +51,6 @@ export function PartnerOffers() {
   const { data: mine, isLoading: mineLoading } = useQuery<OffersResponse>({
     queryKey: ['partner', 'offers', 'my'],
     queryFn: () => api.get('/partner/offers'),
-  });
-
-  const cancelRequest = useMutation({
-    mutationFn: (offerId: string | number) => api.post(`/partner/offers/${offerId}/cancel-request`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['partner', 'offers'] });
-      addToast('Заявка отменена', 'success');
-    },
-    onError: () => addToast('Не удалось отменить заявку', 'error'),
   });
 
   const joinOpen = useMutation({
@@ -101,22 +90,21 @@ export function PartnerOffers() {
   }, [catalog, mine, tab]);
 
   const isLoading = catalogLoading || mineLoading;
-  const partnerName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.email || 'Партнёр';
 
   const openOfferDetails = (offerId: OfferListItem['id']) => {
     navigate(`/partner/offers/${offerId}`);
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-3">
       <h1 className="ui-page-title">Офферы</h1>
       <div className="flex flex-wrap gap-2">
         <input className="ui-input max-w-xs h-9" placeholder="Поиск..." value={q} onChange={(e) => setQ(e.target.value)} />
         <select className="ui-input w-auto h-9" value={category} onChange={(e) => setCategory(e.target.value)}>
           <option value="">Категория</option>
-          {CATEGORIES.map((item) => (
-            <option key={item} value={item}>
-              {item}
+          {CATEGORY_FILTERS.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
             </option>
           ))}
         </select>
@@ -151,30 +139,26 @@ export function PartnerOffers() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-36 rounded-xl" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {[...Array(8)].map((_, i) => (
+            <Skeleton key={i} className="h-[412px] rounded-2xl" />
           ))}
         </div>
       ) : !items.length ? (
         <EmptyState title="Нет офферов" description="Измените фильтры или загляните позже." />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {items.map((offer) => (
             <PartnerOfferCard
               key={offer.id}
               offer={offer}
-              joined={!offer.is_own_offer && offer.partner_status === 'approved'}
-              pending={!offer.is_own_offer && offer.partner_status === 'pending'}
               joinPending={joinOpen.isPending}
               promoteOwnPending={promoteOwnPending}
               onOpen={openOfferDetails}
               onGetLink={setLinkOffer}
-              onOpenLinks={(item) => navigate(`/partner/links?offerId=${item.id}`)}
               onJoinOpen={(item) => joinOpen.mutate(item)}
               onRequestAccess={setRequestOffer}
-              onCancelRequest={(offerId) => cancelRequest.mutate(offerId)}
-              onPromoteOwn={(offer) => promoteOwnOffer(offer.id)}
+              onPromoteOwn={(item) => promoteOwnOffer(item.id)}
             />
           ))}
         </div>
@@ -184,7 +168,7 @@ export function PartnerOffers() {
         <GetLinkModal lockedOffer={linkOffer} onClose={() => setLinkOffer(null)} />
       )}
       {requestOffer && (
-        <RequestAccessModal offerId={requestOffer.id} partnerName={partnerName} onClose={() => setRequestOffer(null)} />
+        <RequestAccessModal offerId={requestOffer.id} offerName={requestOffer.name} onClose={() => setRequestOffer(null)} />
       )}
     </div>
   );

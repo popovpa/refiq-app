@@ -4,13 +4,10 @@ export interface OfferPartnerRow {
   id: number;
   partner_id: number;
   name: string;
-  email: string;
   status: string;
   source: string;
-  comment?: string | null;
-  traffic_sources?: string[];
-  topics?: string | null;
-  geo?: string | null;
+  created_at?: string | null;
+  rejection_reason?: string | null;
   clicks: number;
   conversions: number;
   cr: number;

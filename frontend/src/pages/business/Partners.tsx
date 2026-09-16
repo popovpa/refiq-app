@@ -5,11 +5,12 @@ import { Skeleton } from '@/shared/components/Skeleton';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { cn } from '@/shared/utils/cn';
 import { formatMoney, formatNumber } from '@/shared/utils/format';
+import { partnerDisplayName } from '@/shared/partners/displayName';
 
 interface Partner {
   id: string;
+  partner_id?: number | string | null;
   display_name: string;
-  email?: string | null;
   status: string;
   offers_count?: number | null;
   total_conversions?: number | null;
@@ -96,8 +97,7 @@ export function BusinessPartners() {
                 return (
                   <tr key={partner.id}>
                     <td>
-                      <p className="font-medium">{partner.display_name}</p>
-                      <p className="text-xs text-muted-foreground">{partner.email}</p>
+                      <p className="font-medium">{partnerDisplayName(partner.display_name, partner.partner_id) || 'Партнёр'}</p>
                     </td>
                     <td>
                       <span className={cn('ui-badge', status.className)}>

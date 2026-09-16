@@ -8,6 +8,7 @@ import {
 } from '@/shared/ai/presets';
 
 export function AiRewriteControl({
+  label = 'Улучшить',
   pending,
   error,
   proposed,
@@ -15,6 +16,7 @@ export function AiRewriteControl({
   onAccept,
   onCancel,
 }: {
+  label?: string;
   pending: boolean;
   error: string | null;
   proposed: string | null;
@@ -46,7 +48,7 @@ export function AiRewriteControl({
         onClick={() => setOpen(true)}
       >
         <Sparkles size={11} aria-hidden />
-        Улучшить с AI
+        {label}
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

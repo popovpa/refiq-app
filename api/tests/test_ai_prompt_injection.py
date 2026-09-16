@@ -351,6 +351,7 @@ async def _create_offer(client: AsyncClient) -> str:
             "commission_value": 20,
             "attribution_window_days": 30,
             "access_policy": "open",
+            "allowed_traffic": ["EMAIL"],
             "status": "draft",
             "product_url": "https://crmpro.example.com",
         },

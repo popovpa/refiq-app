@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import and_, select, func
 from app.core.ids import parse_id
 
 from app.common.date_range import resolve_query_range
@@ -15,6 +15,11 @@ from app.modules.campaigns.models import Campaign
 from app.modules.links.models import TrackingLink
 from app.modules.conversions.models import Conversion
 from app.modules.partners.models import PartnerProfile, BusinessPartner
+from app.modules.partners.privacy import (
+    looks_like_contact,
+    partner_public_display_name_from,
+    strip_partner_contact_fields,
+)
 from app.modules.businesses.models import BusinessMembership
 from app.modules.offers.models import Offer, OfferPartnerAccess
 from app.modules.users.models import User
@@ -104,21 +109,98 @@ async def list_partners(
             earned_totals[pid] = float(earned)
 
     items = [
-        {
-            "id": row.BusinessPartner.id,
-            "partner_id": row.BusinessPartner.partner_id,
-            "display_name": row.PartnerProfile.display_name or row.User.email,
-            "email": row.User.email,
-            "status": row.BusinessPartner.status,
-            "offers_count": offers_counts.get(row.BusinessPartner.partner_id, 0),
-            "total_conversions": conversions_counts.get(row.BusinessPartner.partner_id, 0),
-            "total_earned": earned_totals.get(row.BusinessPartner.partner_id, 0),
-            "joined_at": row.BusinessPartner.created_at.isoformat(),
-        }
+        strip_partner_contact_fields(
+            {
+                "id": row.BusinessPartner.id,
+                "partner_id": row.BusinessPartner.partner_id,
+                "display_name": partner_public_display_name_from(row.PartnerProfile, row.User),
+                "status": row.BusinessPartner.status,
+                "offers_count": offers_counts.get(row.BusinessPartner.partner_id, 0),
+                "total_conversions": conversions_counts.get(row.BusinessPartner.partner_id, 0),
+                "total_earned": earned_totals.get(row.BusinessPartner.partner_id, 0),
+                "joined_at": row.BusinessPartner.created_at.isoformat(),
+            }
+        )
         for row in rows
     ]
 
     return {"items": items, "total": total or 0, "page": page, "per_page": per_page}
+
+
+@router.get("/partners/{partner_id}")
+async def get_partner(
+    partner_id: str,
+    session_data: dict = Depends(require_business_role),
+    db: AsyncSession = Depends(get_db),
+):
+    business_id = parse_id(session_data["active_business_id"])
+    try:
+        pid = parse_id(partner_id)
+    except ValueError:
+        raise NotFoundError("Partner")
+    related = (
+        await db.execute(
+            select(OfferPartnerAccess.id)
+            .join(Offer, OfferPartnerAccess.offer_id == Offer.id)
+            .where(Offer.business_id == business_id, OfferPartnerAccess.partner_id == pid)
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if related is None:
+        bp_exists = (
+            await db.execute(
+                select(BusinessPartner.id).where(
+                    BusinessPartner.business_id == business_id,
+                    BusinessPartner.partner_id == pid,
+                )
+            )
+        ).scalar_one_or_none()
+        if bp_exists is None:
+            raise NotFoundError("Partner")
+
+    row = (
+        await db.execute(
+            select(PartnerProfile, User, BusinessPartner)
+            .join(User, PartnerProfile.user_id == User.id)
+            .outerjoin(
+                BusinessPartner,
+                and_(
+                    BusinessPartner.partner_id == PartnerProfile.id,
+                    BusinessPartner.business_id == business_id,
+                ),
+            )
+            .where(PartnerProfile.id == pid)
+        )
+    ).first()
+    if not row:
+        raise NotFoundError("Partner")
+    profile, user, membership = row
+    description = (profile.description or "").strip() or None
+    if description and looks_like_contact(description):
+        description = None
+    offers_count = int(
+        await db.scalar(
+            select(func.count(OfferPartnerAccess.id))
+            .join(Offer, OfferPartnerAccess.offer_id == Offer.id)
+            .where(
+                Offer.business_id == business_id,
+                OfferPartnerAccess.partner_id == pid,
+                OfferPartnerAccess.status == "approved",
+            )
+        )
+        or 0
+    )
+    created_at = membership.created_at if membership else profile.created_at
+    return strip_partner_contact_fields(
+        {
+            "partner_id": profile.id,
+            "display_name": partner_public_display_name_from(profile, user),
+            "description": description,
+            "status": membership.status if membership else profile.status,
+            "created_at": created_at.isoformat() if created_at else None,
+            "offers_count": offers_count,
+        }
+    )
 
 
 @router.post("/partners/{partner_id}/approve")
@@ -178,12 +260,14 @@ async def list_business_conversions(
         select(
             Conversion,
             Offer.name.label("offer_name"),
-            PartnerProfile.display_name.label("partner_name"),
+            PartnerProfile,
+            User,
             Campaign.name.label("campaign_name"),
             TrackingLink,
         )
         .join(Offer, Conversion.offer_id == Offer.id)
         .outerjoin(PartnerProfile, Conversion.partner_id == PartnerProfile.id)
+        .outerjoin(User, PartnerProfile.user_id == User.id)
         .outerjoin(TrackingLink, Conversion.tracking_link_id == TrackingLink.id)
         .outerjoin(Campaign, TrackingLink.campaign_id == Campaign.id)
         .where(Conversion.business_id == business_id)
@@ -221,7 +305,11 @@ async def list_business_conversions(
             "offer_id": row.Conversion.offer_id,
             "offer_name": row.offer_name,
             "partner_id": row.Conversion.partner_id,
-            "partner_name": row.partner_name,
+            "partner_name": (
+                partner_public_display_name_from(row.PartnerProfile, row.User)
+                if row.PartnerProfile is not None
+                else None
+            ),
             "campaign_name": row.campaign_name,
             "source_owner": (
                 "business"
@@ -262,9 +350,11 @@ async def approve_conversion(
     if conversion.status != "pending":
         raise AppError(code="INVALID_STATUS", message="Conversion is not pending", status_code=400)
 
-    from datetime import datetime, timezone
+    from datetime import datetime, timedelta, timezone
     conversion.status = "approved"
     conversion.approved_at = datetime.now(timezone.utc)
+    snapshot = int(conversion.hold_period_days_snapshot or 0)
+    conversion.available_at = conversion.approved_at + timedelta(days=snapshot)
 
     if conversion.partner_id is not None:
         from app.modules.commissions.models import Commission
@@ -275,6 +365,7 @@ async def approve_conversion(
             amount=conversion.commission_amount,
             currency=conversion.currency,
             status="approved",
+            available_at=conversion.available_at,
         )
         db.add(commission)
 

@@ -5,6 +5,7 @@ import { api, type ApiError } from '@/shared/api/client';
 import { Button } from '@/shared/components/Button';
 import { useToast } from '@/shared/components/Toast';
 import { formatMoney, formatNumber } from '@/shared/utils/format';
+import { partnerDisplayName } from '@/shared/partners/displayName';
 import { displayTrackingUrl, publicTrackingUrl } from '@/shared/offers/trackingLink';
 import { linkStatusClass, linkStatusLabel } from '@/shared/partner/links/types';
 import { cn } from '@/shared/utils/cn';
@@ -307,7 +308,7 @@ export function OfferPromotionTab({
             <tbody>
               {partnerLinks.map((link) => (
                 <tr key={link.id} className="cursor-pointer" onClick={() => onOpenPartnerLink(link)}>
-                  <td className="font-medium">{link.partner_name || link.name}</td>
+                  <td className="font-medium">{partnerDisplayName(link.partner_name) || link.name}</td>
                   <td>
                     <code className="text-xs bg-muted px-2 py-1 rounded-md">{link.url}</code>
                   </td>

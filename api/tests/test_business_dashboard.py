@@ -4,20 +4,21 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.links.models import Click
-from tests.helpers import become_partner, register_business
+from tests.helpers import create_partner_link, offer_payload, partner_with_access, register_business
 
 
 @pytest.mark.asyncio
 async def test_business_dashboard_aggregates_period_metrics(client: AsyncClient, db: AsyncSession):
     await register_business(client, "dash-biz@example.com")
-    created = await client.post("/api/v1/business/offers", json={
-        "name": "CRM Pro",
-        "access_policy": "open",
-        "status": "active",
-        "product_url": "https://crmpro.example.com/pricing",
-        "commission_type": "percent",
-        "commission_value": 10,
-    })
+    created = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="CRM Pro",
+        access_policy="open",
+        status="active",
+        product_url="https://crmpro.example.com/pricing",
+        commission_type="percent",
+        commission_value=10,
+        allowed_traffic=["seo", "telegram"],
+    ))
     assert created.status_code == 200
     offer_id = created.json()["id"]
 
@@ -32,20 +33,10 @@ async def test_business_dashboard_aggregates_period_metrics(client: AsyncClient,
     assert "timeseries" in payload
     assert len(payload["timeseries"]) == 7
 
-    await become_partner(client, "Dash Partner")
-    await client.post("/api/v1/me/context", json={"role": "partner"})
-    join = await client.post(f"/api/v1/partner/offers/{offer_id}/join")
-    assert join.status_code == 200
-    link = await client.post("/api/v1/partner/links", json={
-        "offer_id": offer_id,
-        "name": "Telegram",
-        "traffic_source": "telegram",
-    })
-    assert link.status_code == 200
-    clicked = await client.get(f"/go/{link.json()['short_code']}", follow_redirects=False)
+    partner = await partner_with_access(offer_id, "dash-partner@example.com", "Dash Partner")
+    link = await create_partner_link(partner, offer_id)
+    clicked = await client.get(f"/go/{link['short_code']}", follow_redirects=False)
     assert clicked.status_code == 302
-
-    await client.post("/api/v1/me/context", json={"role": "business"})
     token = (await client.post("/api/v1/business/postback/credential")).json()["token"]
     db.expire_all()
     click = (await db.execute(select(Click).order_by(Click.id.desc()))).scalars().first()

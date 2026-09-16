@@ -122,18 +122,20 @@ async def seed():
         offer3_id = next_id()
 
         await db.execute(text("""
-            INSERT INTO offers (id, business_id, product_id, name, description, status, visibility, access_policy, conversion_type, attribution_window_days, currency, category, geo, allowed_traffic, forbidden_traffic, partner_notes, materials, created_at, updated_at)
+            INSERT INTO offers (id, business_id, product_id, name, description, status, visibility, access_policy, conversion_type, attribution_window_days, hold_period_days, currency, category, category_id, geo, allowed_traffic, forbidden_traffic, partner_notes, materials, created_at, updated_at)
             VALUES
-                (:o1, :b1, :p1, 'CRM Pro — Подписка', 'Партнёрская программа CRM Pro. Комиссия за каждую оплаченную подписку.', 'active', 'public', 'open', 'sale', 30, 'RUB', 'SaaS', 'RU, KZ, BY', CAST(:traffic AS JSON), CAST(:forbidden AS JSON), 'Используйте промокод PARTNER20 на посадочной странице.', CAST(:materials1 AS JSON), :now, :now),
-                (:o2, :b1, :p2, 'TaskFlow — Регистрация', 'Комиссия за регистрацию пользователя в TaskFlow.', 'active', 'public', 'approval', 'signup', 14, 'RUB', 'SaaS', 'RU', CAST(:traffic AS JSON), CAST(:forbidden AS JSON), 'Нельзя использовать брендовые запросы в PPC.', CAST(:materials2 AS JSON), :now, :now),
-                (:o3, :b2, :p3, 'DataAnalytics — Enterprise', 'Партнёрка DataAnalytics Enterprise.', 'active', 'public', 'open', 'sale', 60, 'RUB', 'Fintech', 'WW', CAST(:traffic AS JSON), CAST(:forbidden AS JSON), 'Подходит для B2B-аудитории.', CAST(:materials3 AS JSON), :now, :now)
+                (:o1, :b1, :p1, 'CRM Pro — Подписка', 'Партнёрская программа CRM Pro. Комиссия за каждую оплаченную подписку.', 'active', 'public', 'open', 'sale', 30, 0, 'RUB', 'CRM', :crm_id, 'RU,KZ,BY', CAST(:traffic AS JSON), CAST(:forbidden AS JSON), 'Используйте промокод PARTNER20 на посадочной странице.', CAST(:materials1 AS JSON), :now, :now),
+                (:o2, :b1, :p2, 'TaskFlow — Регистрация', 'Комиссия за регистрацию пользователя в TaskFlow.', 'active', 'public', 'approval', 'signup', 14, 0, 'RUB', 'CRM', :crm_id, 'RU', CAST(:traffic AS JSON), CAST(:forbidden AS JSON), 'Нельзя использовать брендовые запросы в PPC.', CAST(:materials2 AS JSON), :now, :now),
+                (:o3, :b2, :p3, 'DataAnalytics — Enterprise', 'Партнёрка DataAnalytics Enterprise.', 'active', 'public', 'open', 'sale', 60, 0, 'RUB', 'PAYMENT_SERVICES', :pay_id, 'US', CAST(:traffic AS JSON), CAST(:forbidden AS JSON), 'Подходит для B2B-аудитории.', CAST(:materials3 AS JSON), :now, :now)
         """), {
             "o1": offer1_id, "o2": offer2_id, "o3": offer3_id,
             "b1": business1_id, "b2": business2_id,
             "p1": product1_id, "p2": product2_id, "p3": product3_id,
             "now": now,
-            "traffic": json.dumps(["seo", "content", "social", "youtube", "telegram"]),
-            "forbidden": json.dumps(["ppc"]),
+            "crm_id": (await db.execute(text("SELECT id FROM offer_categories WHERE code = 'CRM'"))).scalar_one(),
+            "pay_id": (await db.execute(text("SELECT id FROM offer_categories WHERE code = 'PAYMENT_SERVICES'"))).scalar_one(),
+            "traffic": json.dumps(["SEO", "WEBSITE_CONTENT", "SOCIAL_ORGANIC", "VIDEO_CONTENT", "MESSENGERS"]),
+            "forbidden": json.dumps([]),
             "materials1": json.dumps([
                 {"type": "text", "title": "Оффер", "content": "CRM Pro — система для продаж и сопровождения клиентов."},
                 {"type": "text", "title": "CTA", "content": "Попробуйте CRM Pro 14 дней бесплатно."},
@@ -201,9 +203,9 @@ async def seed():
         await db.execute(text("""
             INSERT INTO tracking_links (id, offer_id, partner_id, short_code, destination_url, name, traffic_source, status, created_at, updated_at)
             VALUES
-                (:l1, :o1, :p1, :sc1, 'https://crmpro.example.com/pricing', 'Telegram', 'telegram', 'ACTIVE', :now, :now),
-                (:l2, :o1, :p2, :sc2, 'https://crmpro.example.com/pricing', 'Блог', 'content', 'ACTIVE', :now, :now),
-                (:l3, :o3, :p2, :sc3, 'https://dataanalytics.example.com/enterprise', 'YouTube', 'youtube', 'ACTIVE', :now, :now)
+                (:l1, :o1, :p1, :sc1, 'https://crmpro.example.com/pricing', 'Telegram', 'MESSENGERS', 'ACTIVE', :now, :now),
+                (:l2, :o1, :p2, :sc2, 'https://crmpro.example.com/pricing', 'Блог', 'WEBSITE_CONTENT', 'ACTIVE', :now, :now),
+                (:l3, :o3, :p2, :sc3, 'https://dataanalytics.example.com/enterprise', 'YouTube', 'VIDEO_CONTENT', 'ACTIVE', :now, :now)
         """), {
             "l1": link1_id, "l2": link2_id, "l3": link3_id,
             "o1": offer1_id, "o3": offer3_id,

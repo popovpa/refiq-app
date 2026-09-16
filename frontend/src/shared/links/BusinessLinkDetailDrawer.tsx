@@ -8,6 +8,7 @@ import { trafficLabel } from '@/shared/offers/labels';
 import { businessQrCodeDownloadPath, businessQrCodeUrl, displayTrackingUrl } from '@/shared/offers/trackingLink';
 import { linkStatusClass, linkStatusLabel } from '@/shared/partner/links/types';
 import { cn } from '@/shared/utils/cn';
+import { partnerDisplayName } from '@/shared/partners/displayName';
 
 export type BusinessPromotionLink = {
   id: number | string;
@@ -59,7 +60,7 @@ export function BusinessLinkDetailDrawer({
         <div className="flex items-start justify-between gap-3 p-5 border-b border-border/70">
           <div className="min-w-0">
             <h2 className="ui-section-title truncate">
-              {isOwn ? link.name || 'Собственная ссылка' : link.partner_name || link.name || 'Ссылка'}
+              {isOwn ? link.name || 'Собственная ссылка' : partnerDisplayName(link.partner_name) || link.name || 'Ссылка'}
             </h2>
           </div>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Закрыть">
@@ -68,7 +69,7 @@ export function BusinessLinkDetailDrawer({
         </div>
 
         <div className="flex-1 overflow-auto p-5 space-y-4">
-          {!isOwn && <DetailRow label="Партнёр">{link.partner_name || '—'}</DetailRow>}
+          {!isOwn && <DetailRow label="Партнёр">{partnerDisplayName(link.partner_name) || '—'}</DetailRow>}
           <DetailRow label="Ссылка">
             <code className="text-sm bg-muted px-2 py-1 rounded-md">{displayTrackingUrl(shortCode)}</code>
           </DetailRow>

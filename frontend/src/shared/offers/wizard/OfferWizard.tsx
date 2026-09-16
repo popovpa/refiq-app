@@ -1,6 +1,5 @@
-import { useRef, useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { ChevronDown, Sparkles, Upload, X } from 'lucide-react';
 import { api } from '@/shared/api/client';
 import { Button } from '@/shared/components/Button';
 import { useToast } from '@/shared/components/Toast';
@@ -8,66 +7,74 @@ import { AiDraftBrief } from '@/shared/ai/AiDraftBrief';
 import { AiRewriteControl } from '@/shared/ai/AiRewriteControl';
 import { aiErrorMessage } from '@/shared/ai/messages';
 import { toAiRewritePayload, type AiRewriteRequest } from '@/shared/ai/presets';
-import { draftMarks, draftToForm, mergeAiDraftIntoForm } from '@/shared/ai/offerDraft';
+import { draftMarks, draftToForm } from '@/shared/ai/offerDraft';
 import type { AiMarkedFields, AiRewriteField, OfferAiDraftResponse, OfferAiRewriteResponse } from '@/shared/ai/types';
-import { CATEGORIES, GEO_OPTIONS } from '@/shared/offers/labels';
-import { DESCRIPTION_MAX, offerFormErrors } from '@/shared/offers/offerFormMeta';
-import { OfferAiFieldBadge } from '@/shared/offers/OfferFormSection';
-import { formToPayload, blankOfferForm, type OfferFormValues } from '@/shared/offers/types';
+import { searchTrafficSources } from '@/shared/catalog/trafficSources';
+import { DESCRIPTION_MAX, PARTNER_NOTES_MAX, stepErrors } from '@/shared/offers/offerFormMeta';
+import { blankOfferForm, formToPayload, type OfferFormValues } from '@/shared/offers/types';
 import {
   ACCESS_CARDS,
   ATTRIBUTION_PRESETS,
   CONVERSION_GOAL_CARDS,
-  RESTRICTION_PRESETS,
-  TRAFFIC_SOURCE_CARDS,
+  HOLD_PRESETS,
   WIZARD_STEPS,
   commissionExample,
+  daysLabel,
+  holdHelper,
   type WizardStepId,
 } from '@/shared/offers/wizard/meta';
-import { OfferWizardPreview, OfferWizardReadiness } from '@/shared/offers/wizard/OfferWizardPanels';
-import { canPublishOffer } from '@/shared/offers/wizard/readiness';
+import { OfferImageField } from '@/shared/offers/wizard/OfferImageField';
 import {
+  OfferWizardFormCard,
+  OfferWizardGrid,
+  OfferWizardHeader,
+  OfferWizardWorkspace,
+} from '@/shared/offers/wizard/OfferWizardLayout';
+import { OfferReviewPreview, OfferWizardPreview, OfferWizardReadiness } from '@/shared/offers/wizard/OfferWizardPanels';
+import { canPublishOffer, stepComplete } from '@/shared/offers/wizard/readiness';
+import {
+  CategoryCombobox,
   CheckboxCard,
   ChipSelect,
+  CountryMultiSelect,
   FieldShell,
-  GeoCombobox,
-  SearchableCombobox,
   SegmentedControl,
   SelectableCard,
+  SiteCombobox,
   WizardStepper,
 } from '@/shared/offers/wizard/ui';
-import { OfferImage } from '@/shared/offers/OfferImage';
 import type { BusinessSite } from '@/pages/business/settings/types';
-import { resizeImage } from '@/shared/utils/image';
 import { cn } from '@/shared/utils/cn';
 
 type Phase = 'ai-brief' | 'wizard';
 
-function resolveInitialPhase(initialAiBrief: boolean): Phase {
-  return initialAiBrief ? 'ai-brief' : 'wizard';
-}
-
 export function OfferWizard({
+  mode = 'create',
   initialAiBrief = false,
+  initialForm,
+  offerId,
+  status,
   onBack,
-  onCreated,
+  onSaved,
 }: {
+  mode?: 'create' | 'edit';
   initialAiBrief?: boolean;
+  initialForm?: OfferFormValues;
+  offerId?: string;
+  status?: string;
   onBack: () => void;
-  onCreated: (id: string) => void;
+  onSaved: (id: string) => void;
 }) {
   const { addToast } = useToast();
-  const [phase, setPhase] = useState<Phase>(() => resolveInitialPhase(initialAiBrief));
-  const [step, setStep] = useState<WizardStepId>('product');
-  const [form, setForm] = useState<OfferFormValues>(() => blankOfferForm());
+  const [phase, setPhase] = useState<Phase>(() => (initialAiBrief ? 'ai-brief' : 'wizard'));
+  const [step, setStep] = useState<WizardStepId>('basics');
+  const [form, setForm] = useState<OfferFormValues>(() => initialForm || blankOfferForm());
   const [aiMarked, setAiMarked] = useState<AiMarkedFields>({});
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [briefError, setBriefError] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
   const [rewrite, setRewrite] = useState<{ field: AiRewriteField; proposed: string | null; error: string | null } | null>(null);
-  const [imageFromWebsite, setImageFromWebsite] = useState(false);
-  const imageRef = useRef<HTMLInputElement>(null);
+  const [trafficQuery, setTrafficQuery] = useState('');
 
   const { data: sites } = useQuery<BusinessSite[]>({
     queryKey: ['business', 'sites'],
@@ -75,13 +82,29 @@ export function OfferWizard({
   });
 
   const createOffer = useMutation({
-    mutationFn: (status: 'draft' | 'active') => api.post<{ id: string }>('/business/offers', formToPayload(form, status)),
-    onSuccess: async (data, status) => {
+    mutationFn: (nextStatus: 'draft' | 'active') => api.post<{ id: string }>('/business/offers', formToPayload(form, nextStatus)),
+    onSuccess: async (data, nextStatus) => {
       if (generationId) {
         await api.post(`/ai/generations/${generationId}/feedback`, { outcome: 'EDITED_AFTER_GENERATION' }).catch(() => undefined);
       }
-      addToast(status === 'active' ? 'Оффер опубликован' : 'Черновик сохранён', 'success');
-      onCreated(data.id);
+      addToast(nextStatus === 'active' ? 'Оффер опубликован' : 'Черновик сохранён', 'success');
+      onSaved(data.id);
+    },
+    onError: () => addToast('Не удалось сохранить оффер', 'error'),
+  });
+
+  const updateOffer = useMutation({
+    mutationFn: (nextStatus?: string) =>
+      api.patch(`/business/offers/${offerId}`, {
+        ...formToPayload(form, nextStatus || status || 'draft'),
+        status: nextStatus || status,
+      }),
+    onSuccess: async () => {
+      if (generationId) {
+        await api.post(`/ai/generations/${generationId}/feedback`, { outcome: 'EDITED_AFTER_GENERATION' }).catch(() => undefined);
+      }
+      addToast('Изменения сохранены', 'success');
+      onSaved(String(offerId));
     },
     onError: () => addToast('Не удалось сохранить оффер', 'error'),
   });
@@ -93,56 +116,35 @@ export function OfferWizard({
       setForm(draftToForm(data.draft, data.recommendations, data.image_url));
       setAiMarked(draftMarks());
       setGenerationId(data.generation_id);
-      setImageFromWebsite(Boolean(data.image_url));
       setBriefError(null);
       setPhase('wizard');
-      setStep('product');
+      setStep('basics');
     },
     onError: (error) => setBriefError(aiErrorMessage(error)),
   });
 
-  const fillMissing = useMutation({
-    mutationFn: () => {
-      const description = [
-        form.name && `Название: ${form.name}`,
-        form.description && `Описание: ${form.description}`,
-        form.product_url && `Сайт: ${form.product_url}`,
-        `Комиссия: ${form.commission_value} ${form.commission_type}`,
-      ]
-        .filter(Boolean)
-        .join('\n');
-      return api.post<OfferAiDraftResponse>('/ai/offers/draft', {
-        description: description || 'Заполни недостающие поля оффера',
-        category: form.category || undefined,
-        product_url: form.product_url || undefined,
-      });
-    },
-    onSuccess: (data) => {
-      setForm(mergeAiDraftIntoForm(form, data.draft, data.recommendations, data.image_url, true));
-      setAiMarked((current) => ({ ...current, ...draftMarks() }));
-      setGenerationId(data.generation_id);
-      addToast('Недостающие поля заполнены', 'success');
-    },
-    onError: (error) => addToast(aiErrorMessage(error), 'error'),
-  });
-
   const rewriteField = useMutation({
     mutationFn: ({ field, request }: { field: AiRewriteField; request: AiRewriteRequest }) =>
-      api.post<OfferAiRewriteResponse>(`/ai/offers/fields/${field}/rewrite`, {
-        ...toAiRewritePayload(request),
-        value: form[field],
-        context: form,
-      }),
+      api.post<OfferAiRewriteResponse>(
+        offerId ? `/ai/offers/${offerId}/fields/${field}/rewrite` : `/ai/offers/fields/${field}/rewrite`,
+        { ...toAiRewritePayload(request), value: form[field], context: form },
+      ),
     onSuccess: (data) => setRewrite({ field: data.field as AiRewriteField, proposed: data.value, error: null }),
     onError: (error, variables) =>
       setRewrite({ field: variables.field, proposed: rewrite?.proposed ?? null, error: aiErrorMessage(error) }),
   });
 
-  const errors = attempted ? offerFormErrors(form, true) : {};
+  const errors = attempted ? stepErrors(form, step === 'review' ? 'conversions' : step) : {};
   const stepIndex = WIZARD_STEPS.findIndex((item) => item.id === step);
+  const reachable = WIZARD_STEPS.filter((_item, index) => {
+    if (index === 0) return true;
+    const prev = WIZARD_STEPS[index - 1];
+    return prev.id === 'review' || stepComplete(form, prev.id as 'basics' | 'traffic' | 'conversions') || index <= stepIndex;
+  }).map((item) => item.id as string);
+  const pending = createOffer.isPending || updateOffer.isPending;
+  const isActive = status === 'active';
 
   const updateForm = (next: OfferFormValues) => {
-    if (next.image_url !== form.image_url) setImageFromWebsite(false);
     setAiMarked((current) => {
       const updated = { ...current };
       (Object.keys(next) as (keyof OfferFormValues)[]).forEach((key) => {
@@ -152,11 +154,11 @@ export function OfferWizard({
     });
     setForm(next);
   };
-
   const set = <K extends keyof OfferFormValues>(key: K, value: OfferFormValues[K]) => updateForm({ ...form, [key]: value });
 
-  const rewriteSlot = (field: AiRewriteField) => (
+  const rewriteSlot = (field: AiRewriteField, label: string) => (
     <AiRewriteControl
+      label={label}
       pending={rewriteField.isPending && rewrite?.field === field}
       error={rewrite?.field === field ? rewrite.error : null}
       proposed={rewrite?.field === field ? rewrite.proposed : null}
@@ -175,19 +177,28 @@ export function OfferWizard({
 
   const goNext = () => {
     setAttempted(true);
-    if (step === 'product' && (!form.name.trim() || !form.description.trim() || !form.category.trim())) return;
-    if (step === 'reward') {
-      const rewardErrors = offerFormErrors(form, true);
-      if (rewardErrors.commission_value || !form.conversion_type) return;
-    }
-    if (step === 'promotion' && (!form.geo.trim() || form.allowed_traffic.length === 0)) return;
+    if (step !== 'review' && !stepComplete(form, step)) return;
     const next = WIZARD_STEPS[stepIndex + 1];
-    if (next) setStep(next.id);
+    if (next) {
+      setAttempted(false);
+      setStep(next.id);
+    }
   };
 
   const goPrev = () => {
     const prev = WIZARD_STEPS[stepIndex - 1];
-    if (prev) setStep(prev.id);
+    if (prev) {
+      setAttempted(false);
+      setStep(prev.id);
+    }
+  };
+
+  const save = (nextStatus?: 'draft' | 'active') => {
+    if (mode === 'edit') {
+      updateOffer.mutate(nextStatus || status);
+      return;
+    }
+    createOffer.mutate(nextStatus || 'draft');
   };
 
   if (phase === 'ai-brief') {
@@ -201,187 +212,114 @@ export function OfferWizard({
     );
   }
 
-  return (
-    <div className="space-y-4 max-w-6xl">
-      <button type="button" onClick={onBack} className="text-sm text-muted-foreground hover:text-primary">
-        ← Офферы
-      </button>
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="space-y-2">
-          <h1 className="ui-page-title">Новый оффер</h1>
-          <WizardStepper steps={[...WIZARD_STEPS]} current={step} onStep={(id) => setStep(id as WizardStepId)} />
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (form.name.trim() || form.description.trim()) fillMissing.mutate();
-              else setPhase('ai-brief');
-            }}
-          >
-            <Sparkles size={14} />
-            {form.name.trim() || form.description.trim() ? 'Заполнить пропущенное' : 'AI-черновик'}
-          </Button>
-          <Button type="button" variant="secondary" disabled={createOffer.isPending} onClick={() => createOffer.mutate('draft')}>
-            Сохранить как черновик
-          </Button>
-        </div>
-      </div>
+  const trafficSources = searchTrafficSources(trafficQuery);
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)]">
-        <div className="ui-card p-5 space-y-5 min-w-0">
-          {step === 'product' && (
+  return (
+    <OfferWizardWorkspace>
+      <OfferWizardHeader
+        title={mode === 'edit' ? 'Редактирование оффера' : `Создание оффера — Шаг ${stepIndex + 1} из 4`}
+        backLabel={mode === 'edit' ? '← К офферу' : '← К списку офферов'}
+        onBack={onBack}
+      />
+
+      <OfferWizardGrid
+        stepper={
+          <WizardStepper
+            steps={[...WIZARD_STEPS]}
+            current={step}
+            reachable={reachable}
+            onStep={(id) => {
+              if (reachable.includes(id)) {
+                setAttempted(false);
+                setStep(id as WizardStepId);
+              }
+            }}
+          />
+        }
+        aside={
+          step !== 'review' ? (
             <>
-              <SectionTitle title="Что вы хотите продвигать?" />
-              <FieldShell label="Название оффера" required error={errors.name} extra={rewriteSlot('name')}>
-                <input className={inputCls(errors.name)} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Например, CRM Pro" />
-                {aiMarked.name && <AiBadge />}
-              </FieldShell>
-              <FieldShell label="Категория" required>
-                <SearchableCombobox value={form.category} options={[...CATEGORIES]} onChange={(v) => set('category', v)} />
-                {aiMarked.category && <AiBadge />}
-              </FieldShell>
-              <FieldShell label="Сайт продукта" hint="Это не tracking-ссылка. Destination URL задаётся при создании ссылки.">
-                {sites && sites.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-1.5">
-                    {sites.map((site) => (
-                      <button
-                        key={site.id}
-                        type="button"
-                        className="px-2 py-1 rounded-md text-xs border border-border hover:border-primary/40"
-                        onClick={() => set('product_url', `https://${site.domain}`)}
-                      >
-                        {site.domain}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <input className="ui-input" placeholder="https://" value={form.product_url} onChange={(e) => set('product_url', e.target.value)} />
-              </FieldShell>
+              <OfferWizardPreview form={form} />
+              <OfferWizardReadiness form={form} current={step} />
+            </>
+          ) : (
+            <OfferWizardReadiness form={form} current={step} />
+          )
+        }
+        main={
+          <OfferWizardFormCard>
+          {step === 'basics' && (
+            <>
+              <div>
+                <h2 className="text-lg font-semibold">Основная информация</h2>
+              </div>
+              <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)_minmax(0,1fr)]">
+                <FieldShell label="Название оффера" required error={errors.name} extra={rewriteSlot('name', 'Улучшить')}>
+                  <input className={inputCls(errors.name)} value={form.name} onChange={(e) => set('name', e.target.value)} />
+                </FieldShell>
+                <FieldShell label="Категория" required error={errors.category}>
+                  <CategoryCombobox value={form.category} onChange={(value) => set('category', value)} error={Boolean(errors.category)} />
+                </FieldShell>
+                <FieldShell label="Сайт продукта">
+                  <SiteCombobox value={form.product_url} onChange={(value) => set('product_url', value)} sites={sites} />
+                </FieldShell>
+              </div>
+              <div className="grid grid-cols-1 items-stretch gap-4 lg:[grid-template-columns:minmax(160px,min(32%,200px))_minmax(0,1fr)]">
+                <FieldShell label="Изображение">
+                  <OfferImageField
+                    src={form.image_url}
+                    onChange={(value) => set('image_url', value)}
+                    onError={(message) => addToast(message, 'error')}
+                  />
+                </FieldShell>
+                <FieldShell
+                  label="Описание оффера"
+                  required
+                  fill
+                  hint="Это описание поможет партнёру понять продукт и оценить оффер."
+                  error={errors.description}
+                  extra={
+                    <span className="flex items-center gap-2">
+                      {rewriteSlot('description', 'Сформировать')}
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {form.description.length}/{DESCRIPTION_MAX}
+                      </span>
+                    </span>
+                  }
+                >
+                  <textarea
+                    className={cn(inputCls(errors.description), 'min-h-[140px] resize-none lg:min-h-0 lg:flex-1 lg:h-full')}
+                    value={form.description}
+                    onChange={(e) => set('description', e.target.value.slice(0, DESCRIPTION_MAX))}
+                    placeholder="Опишите продукт или услугу, для кого они предназначены и в чём их основная ценность"
+                  />
+                </FieldShell>
+              </div>
               <FieldShell
-                label="Описание"
-                required
-                error={errors.description}
+                label="Комментарий для партнёра"
+                hint="Комментарий носит информационный характер. GEO, разрешённые источники трафика и условия вознаграждения задаются отдельными параметрами оффера."
+                error={errors.partner_notes}
                 extra={
-                  <span className="flex items-center gap-2">
-                    {rewriteSlot('description')}
-                    <span className="text-xs text-muted-foreground tabular-nums">{form.description.length}/{DESCRIPTION_MAX}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {form.partner_notes.length}/{PARTNER_NOTES_MAX}
                   </span>
                 }
               >
                 <textarea
-                  className={cn(inputCls(errors.description), 'min-h-[120px] resize-y')}
-                  value={form.description}
-                  onChange={(e) => set('description', e.target.value.slice(0, DESCRIPTION_MAX))}
-                  placeholder="Коротко опишите продукт для партнёров"
-                />
-              </FieldShell>
-              <FieldShell label="Изображение оффера">
-                <div className="flex items-center gap-3 rounded-xl border border-dashed border-border p-3">
-                  <OfferImage src={form.image_url} name={form.name || 'Оффер'} size="md" />
-                  <div className="space-y-2">
-                    <div className="flex gap-2">
-                      <Button type="button" size="sm" variant="secondary" onClick={() => imageRef.current?.click()}>
-                        <Upload size={14} />
-                        {form.image_url ? 'Заменить' : 'Загрузить'}
-                      </Button>
-                      {form.image_url && (
-                        <Button type="button" size="sm" variant="ghost" onClick={() => set('image_url', null)}>
-                          <X size={14} />
-                        </Button>
-                      )}
-                    </div>
-                    {imageFromWebsite && form.image_url && <OfferAiFieldBadge variant="website" />}
-                  </div>
-                </div>
-                <input ref={imageRef} type="file" accept="image/*" className="hidden" onChange={handleImageUpload(set, addToast)} />
-              </FieldShell>
-            </>
-          )}
-
-          {step === 'reward' && (
-            <>
-              <SectionTitle title="Вознаграждение партнёра" />
-              <FieldShell label="За какое действие получает вознаграждение партнёр?" required>
-                <div className="grid sm:grid-cols-2 gap-2">
-                  {CONVERSION_GOAL_CARDS.map((card) => (
-                    <SelectableCard
-                      key={card.value}
-                      selected={form.conversion_type === card.value}
-                      title={card.title}
-                      description={card.description}
-                      badge={aiMarked.conversion_type ? 'AI' : undefined}
-                      onClick={() => set('conversion_type', card.value)}
-                    />
-                  ))}
-                </div>
-              </FieldShell>
-              <FieldShell label="Как рассчитывать вознаграждение?">
-                <SegmentedControl
-                  value={form.commission_type}
-                  options={[
-                    { value: 'percent', label: 'Процент от продажи' },
-                    { value: 'fixed', label: 'Фиксированная сумма' },
-                  ]}
-                  onChange={(v) => set('commission_type', v)}
+                  rows={4}
+                  className={cn(inputCls(errors.partner_notes), 'min-h-[88px] resize-y')}
+                  value={form.partner_notes}
+                  onChange={(e) => set('partner_notes', e.target.value.slice(0, PARTNER_NOTES_MAX))}
+                  placeholder="Добавьте рекомендации партнёру: на какую аудиторию ориентироваться, какие преимущества подчёркивать и какие особенности продвижения учитывать"
                 />
               </FieldShell>
               <FieldShell
-                label="Партнёр получает"
+                label="Доступ к офферу"
                 required
-                error={errors.commission_value}
-                hint={commissionExample(form) || 'Укажите размер вознаграждения'}
+                error={errors.access_policy}
+                hint="Выберите, кто сможет видеть и продвигать этот оффер."
               >
-                <div className="flex items-center gap-2 max-w-xs">
-                  <input
-                    type="number"
-                    min={0}
-                    max={form.commission_type === 'percent' ? 100 : undefined}
-                    step={form.commission_type === 'percent' ? 0.1 : 1}
-                    className={inputCls(errors.commission_value)}
-                    value={form.commission_value}
-                    onChange={(e) => set('commission_value', e.target.value)}
-                  />
-                  {form.commission_type === 'percent' ? (
-                    <span className="text-sm font-medium text-muted-foreground">%</span>
-                  ) : (
-                    <select className="ui-input w-24" value={form.commission_currency} onChange={(e) => set('commission_currency', e.target.value)}>
-                      <option value="RUB">RUB</option>
-                      <option value="USD">USD</option>
-                      <option value="EUR">EUR</option>
-                    </select>
-                  )}
-                </div>
-                {form.commission_type === 'percent' && (
-                  <p className="text-xs text-muted-foreground mt-1">Допустимый диапазон: от 0.1% до 100%</p>
-                )}
-              </FieldShell>
-              <FieldShell
-                label="Как долго закреплять клиента за партнёром?"
-                hint="Если клиент перейдёт по ссылке партнёра и совершит целевое действие в течение этого периода, конверсия может быть закреплена за партнёром."
-              >
-                <ChipSelect
-                  value={form.attribution_window_days}
-                  options={ATTRIBUTION_PRESETS.map((days) => ({ value: String(days), label: `${days} дней` }))}
-                  onChange={(v) => set('attribution_window_days', v)}
-                  allowCustom
-                  customValue={form.attribution_window_days}
-                  onCustomChange={(v) => set('attribution_window_days', v)}
-                />
-              </FieldShell>
-            </>
-          )}
-
-          {step === 'promotion' && (
-            <>
-              <SectionTitle title="Условия продвижения" />
-              <FieldShell label="GEO" required>
-                <GeoCombobox value={form.geo} options={[...GEO_OPTIONS]} onChange={(v) => set('geo', v)} />
-              </FieldShell>
-              <FieldShell label="Тип доступа">
-                <div className="grid sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-[repeat(3,minmax(0,1fr))]">
                   {ACCESS_CARDS.map((card) => (
                     <SelectableCard
                       key={card.value}
@@ -393,185 +331,193 @@ export function OfferWizard({
                   ))}
                 </div>
               </FieldShell>
-              <FieldShell label="Где партнёры могут продвигать продукт?" required>
-                <div className="grid sm:grid-cols-2 gap-2">
-                  {TRAFFIC_SOURCE_CARDS.map((card) => {
-                    const checked = card.keys.every((key) => form.allowed_traffic.includes(key));
-                    return (
-                      <CheckboxCard
-                        key={card.label}
-                        checked={checked}
-                        label={card.label}
-                        aiRecommended={aiMarked.allowed_traffic === 'generated' && checked}
-                        onChange={() => {
-                          const next = new Set(form.allowed_traffic);
-                          if (checked) card.keys.forEach((key) => next.delete(key));
-                          else card.keys.forEach((key) => next.add(key));
-                          set('allowed_traffic', [...next]);
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </FieldShell>
-              <FieldShell label="Ограничения">
-                <div className="space-y-2">
-                  {RESTRICTION_PRESETS.map((preset) => (
-                    <CheckboxCard
-                      key={preset.id}
-                      checked={form.selected_restrictions.includes(preset.id)}
-                      label={preset.label}
-                      onChange={() => toggleRestriction(form, updateForm, preset.id)}
-                    />
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  className="text-sm text-primary hover:underline mt-2"
-                  onClick={() => setAdvancedOpen(true)}
-                >
-                  + Добавить своё правило
-                </button>
-                {(advancedOpen || form.restrictions_custom) && (
-                  <textarea
-                    className="ui-input mt-2 min-h-[72px]"
-                    placeholder="Своё правило для партнёров"
-                    value={form.restrictions_custom}
-                    onChange={(e) => set('restrictions_custom', e.target.value)}
-                  />
-                )}
-              </FieldShell>
-              <CollapsibleAdvanced form={form} open={advancedOpen} onToggle={() => setAdvancedOpen((v) => !v)} set={set} rewriteSlot={rewriteSlot} />
             </>
           )}
 
-          {step === 'review' && (
+          {step === 'traffic' && (
             <>
-              <SectionTitle title="Проверка и публикация" />
-              <p className="text-sm text-muted-foreground">Проверьте, как оффер будет выглядеть для партнёров, и опубликуйте или сохраните черновик.</p>
-              <OfferWizardPreview form={form} />
+              <h2 className="text-lg font-semibold">Параметры трафика</h2>
+              <div className="grid lg:grid-cols-2 gap-5">
+                <FieldShell label="География" required error={errors.geo_countries}>
+                  <CountryMultiSelect
+                    value={form.geo_countries}
+                    onChange={(value) => set('geo_countries', value)}
+                    error={Boolean(errors.geo_countries)}
+                  />
+                </FieldShell>
+                <FieldShell
+                  label="Разрешённые источники трафика"
+                  required
+                  error={errors.allowed_traffic}
+                  hint="Партнёры могут использовать только выбранные источники. Все остальные источники запрещены."
+                >
+                  <div className="relative mb-2">
+                    <input
+                      className="ui-input h-9"
+                      placeholder="Поиск по источникам..."
+                      value={trafficQuery}
+                      onChange={(e) => setTrafficQuery(e.target.value)}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 max-h-[280px] overflow-auto pr-1">
+                    {trafficSources.map((source) => {
+                      const checked = form.allowed_traffic.includes(source.code);
+                      return (
+                        <CheckboxCard
+                          key={source.code}
+                          checked={checked}
+                          label={source.nameRu}
+                          onChange={() => {
+                            set(
+                              'allowed_traffic',
+                              checked
+                                ? form.allowed_traffic.filter((item) => item !== source.code)
+                                : [...form.allowed_traffic, source.code],
+                            );
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                </FieldShell>
+              </div>
             </>
           )}
 
-          <div className="flex justify-between gap-2 pt-2 border-t border-border/70">
-            <Button type="button" variant="ghost" disabled={stepIndex === 0} onClick={goPrev}>
-              Назад
-            </Button>
-            {step !== 'review' ? (
-              <Button type="button" onClick={goNext}>
-                Далее
+          {step === 'conversions' && (
+            <>
+              <div>
+                <h2 className="text-lg font-semibold">Настройте вознаграждение для партнёра</h2>
+                <p className="text-sm text-muted-foreground mt-1">Укажите, за какое действие и сколько получает партнёр.</p>
+              </div>
+              <div className="grid lg:grid-cols-2 gap-5">
+                <div className="space-y-4">
+                  <FieldShell label="За какое действие получает вознаграждение партнёр?" required error={errors.conversion_type}>
+                    <div className="grid grid-cols-2 gap-2">
+                      {CONVERSION_GOAL_CARDS.map((card) => (
+                        <SelectableCard
+                          key={card.value}
+                          selected={form.conversion_type === card.value}
+                          title={card.title}
+                          description={card.description}
+                          onClick={() => set('conversion_type', card.value)}
+                        />
+                      ))}
+                    </div>
+                  </FieldShell>
+                  <FieldShell label="Размер комиссии" required error={errors.commission_value} hint={commissionExample(form) || undefined}>
+                    <div className="flex items-center gap-2 max-w-xs">
+                      <div className="relative flex-1">
+                        <input
+                          type="number"
+                          min={0}
+                          max={form.commission_type === 'percent' ? 100 : undefined}
+                          className={cn(inputCls(errors.commission_value), form.commission_type === 'percent' && 'pr-10')}
+                          value={form.commission_value}
+                          onChange={(e) => set('commission_value', e.target.value)}
+                        />
+                        {form.commission_type === 'percent' && (
+                          <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-sm text-muted-foreground">%</span>
+                        )}
+                      </div>
+                      {form.commission_type === 'fixed' && (
+                        <select className="ui-input w-24" value={form.commission_currency} onChange={(e) => set('commission_currency', e.target.value)}>
+                          <option value="RUB">RUB</option>
+                          <option value="USD">USD</option>
+                          <option value="EUR">EUR</option>
+                        </select>
+                      )}
+                    </div>
+                  </FieldShell>
+                </div>
+                <div className="space-y-4">
+                  <FieldShell label="Как рассчитывается вознаграждение?" required>
+                    <SegmentedControl
+                      value={form.commission_type}
+                      options={[
+                        { value: 'percent', label: '% от продажи' },
+                        { value: 'fixed', label: 'Фиксированная сумма' },
+                      ]}
+                      onChange={(value) => set('commission_type', value)}
+                    />
+                  </FieldShell>
+                  <FieldShell
+                    label="Как долго закреплять клиента за партнёром?"
+                    required
+                    hint="Если клиент совершит целевое действие в течение этого периода, конверсия будет закреплена за партнёром."
+                  >
+                    <ChipSelect
+                      value={form.attribution_window_days}
+                      options={ATTRIBUTION_PRESETS.map((days) => ({ value: String(days), label: daysLabel(days) }))}
+                      onChange={(value) => set('attribution_window_days', value)}
+                    />
+                  </FieldShell>
+                  <FieldShell
+                    label="Холд-период"
+                    required
+                    hint={holdHelper(form.hold_period_days)}
+                  >
+                    <ChipSelect
+                      value={form.hold_period_days}
+                      options={HOLD_PRESETS.map((days) => ({ value: String(days), label: daysLabel(days) }))}
+                      onChange={(value) => set('hold_period_days', value)}
+                    />
+                    {mode === 'edit' && isActive && (
+                      <p className="text-xs text-muted-foreground mt-1.5">Новое значение применяется только к новым конверсиям.</p>
+                    )}
+                  </FieldShell>
+                </div>
+              </div>
+            </>
+          )}
+
+          {step === 'review' && <OfferReviewPreview form={form} onEdit={setStep} />}
+
+          <div className="flex items-center justify-between gap-2 border-t border-border/70 pt-3">
+            {step === 'basics' ? (
+              <Button type="button" variant="secondary" onClick={onBack}>
+                Отмена
               </Button>
             ) : (
-              <Button
-                type="button"
-                disabled={createOffer.isPending || !canPublishOffer(form)}
-                onClick={() => {
-                  setAttempted(true);
-                  if (canPublishOffer(form)) createOffer.mutate('active');
-                }}
-              >
-                {createOffer.isPending ? 'Публикация...' : 'Опубликовать оффер'}
+              <Button type="button" variant="secondary" onClick={goPrev}>
+                {step === 'traffic' ? '← Назад' : step === 'conversions' ? '← Назад: Трафик' : '← Назад'}
+              </Button>
+            )}
+            {step !== 'review' ? (
+              <Button type="button" onClick={goNext}>
+                {step === 'basics' ? 'Далее' : step === 'traffic' ? 'Далее: Конверсии →' : 'Далее: Проверка →'}
+              </Button>
+            ) : mode === 'create' ? (
+              <div className="flex gap-2">
+                <Button type="button" variant="secondary" disabled={pending} onClick={() => save('draft')}>
+                  Сохранить как черновик
+                </Button>
+                <Button
+                  type="button"
+                  disabled={pending || !canPublishOffer(form)}
+                  onClick={() => {
+                    setAttempted(true);
+                    if (canPublishOffer(form)) save('active');
+                  }}
+                >
+                  {pending ? 'Публикация...' : 'Опубликовать оффер'}
+                </Button>
+              </div>
+            ) : (
+              <Button type="button" disabled={pending} onClick={() => save()}>
+                {pending ? 'Сохранение...' : 'Сохранить изменения'}
               </Button>
             )}
           </div>
-        </div>
-
-        <aside className="space-y-3 lg:sticky lg:top-4">
-          <OfferWizardPreview form={form} />
-          <OfferWizardReadiness form={form} onFillMissing={() => fillMissing.mutate()} fillPending={fillMissing.isPending} />
-        </aside>
-      </div>
-    </div>
+          </OfferWizardFormCard>
+        }
+      />
+      {aiMarked.name ? <span className="sr-only">AI</span> : null}
+    </OfferWizardWorkspace>
   );
-}
-
-function SectionTitle({ title }: { title: string }) {
-  return <h2 className="text-lg font-semibold">{title}</h2>;
-}
-
-function AiBadge() {
-  return <OfferAiFieldBadge variant="recommendation" />;
 }
 
 function inputCls(error?: string) {
   return cn('ui-input', error && 'border-destructive');
 }
 
-function toggleRestriction(
-  form: OfferFormValues,
-  updateForm: (next: OfferFormValues) => void,
-  id: string,
-) {
-  const preset = RESTRICTION_PRESETS.find((item) => item.id === id);
-  if (!preset) return;
-  const selected = form.selected_restrictions.includes(id);
-  const nextSelected = selected ? form.selected_restrictions.filter((item) => item !== id) : [...form.selected_restrictions, id];
-  let forbidden = [...form.forbidden_traffic];
-  let restrictionsCustom = form.restrictions_custom;
-  if ('traffic' in preset && preset.traffic) {
-    if (selected) forbidden = forbidden.filter((item) => !(preset.traffic as readonly string[]).includes(item));
-    else (preset.traffic as readonly string[]).forEach((item) => {
-      if (!forbidden.includes(item)) forbidden.push(item);
-    });
-  } else if ('note' in preset && preset.note) {
-    if (!selected && !restrictionsCustom.includes(preset.note)) {
-      restrictionsCustom = restrictionsCustom ? `${restrictionsCustom}\n${preset.note}` : preset.note;
-    }
-  }
-  updateForm({ ...form, selected_restrictions: nextSelected, forbidden_traffic: forbidden, restrictions_custom: restrictionsCustom });
-}
-
-function handleImageUpload(
-  set: <K extends keyof OfferFormValues>(key: K, value: OfferFormValues[K]) => void,
-  addToast: (msg: string, type: 'error' | 'success' | 'info') => void,
-) {
-  return async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      addToast('Файл больше 2 МБ', 'error');
-      return;
-    }
-    try {
-      set('image_url', await resizeImage(file, 240));
-    } catch {
-      addToast('Не удалось прочитать изображение', 'error');
-    }
-  };
-}
-
-function CollapsibleAdvanced({
-  form,
-  open,
-  onToggle,
-  set,
-  rewriteSlot,
-}: {
-  form: OfferFormValues;
-  open: boolean;
-  onToggle: () => void;
-  set: <K extends keyof OfferFormValues>(key: K, value: OfferFormValues[K]) => void;
-  rewriteSlot: (field: AiRewriteField) => ReactNode;
-}) {
-  return (
-    <div className="border border-border/70 rounded-xl">
-      <button type="button" className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium" onClick={onToggle}>
-        Расширенные настройки
-        <ChevronDown size={16} className={cn('transition-transform', open && 'rotate-180')} />
-      </button>
-      {open && (
-        <div className="px-4 pb-4 space-y-3 border-t border-border/70 pt-3">
-          <FieldShell label="Комментарий для партнёров" extra={rewriteSlot('partner_notes')}>
-            <textarea
-              className="ui-input min-h-[72px]"
-              value={form.partner_notes}
-              onChange={(e) => set('partner_notes', e.target.value)}
-              placeholder="Дополнительные инструкции"
-            />
-          </FieldShell>
-        </div>
-      )}
-    </div>
-  );
-}

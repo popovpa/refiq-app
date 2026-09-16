@@ -1,26 +1,31 @@
+import { parseGeoCodes } from '@/shared/catalog/countries';
+import { normalizeTrafficSource } from '@/shared/catalog/trafficSources';
+import { resolveCategoryCode } from '@/shared/catalog/categories';
 import { emptyOfferForm, type OfferFormValues } from '@/shared/offers/types';
 import type { OfferAiDraft, OfferAiRecommendations } from '@/shared/ai/types';
 import { AI_CONTENT_FIELDS, AI_RECOMMENDED_FIELDS, type AiMarkedFields } from '@/shared/ai/types';
 
 export function mergeAiDraftIntoForm(
   form: OfferFormValues,
-  draft: import('@/shared/ai/types').OfferAiDraft,
-  recommendations: import('@/shared/ai/types').OfferAiRecommendations,
+  draft: OfferAiDraft,
+  recommendations: OfferAiRecommendations,
   imageUrl?: string | null,
   onlyMissing = false,
 ): OfferFormValues {
   const pickStr = (current: string, next: string) => (onlyMissing ? current.trim() || next : next || current);
-  const pickArr = (current: string[], next: string[]) => (onlyMissing && current.length > 0 ? current : next.length ? next : current);
+  const nextGeo = parseGeoCodes(draft.geo);
+  const nextTraffic = (draft.allowed_traffic || [])
+    .map((item) => normalizeTrafficSource(item))
+    .filter((item): item is string => Boolean(item));
 
   return {
     ...form,
     name: pickStr(form.name, draft.name),
     description: pickStr(form.description, draft.description),
-    category: pickStr(form.category, draft.category),
-    geo: pickStr(form.geo, draft.geo),
+    category: pickStr(form.category, resolveCategoryCode(draft.category) || ''),
+    geo_countries: onlyMissing && form.geo_countries.length > 0 ? form.geo_countries : nextGeo.length ? nextGeo : form.geo_countries,
     partner_notes: pickStr(form.partner_notes, draft.partner_notes || ''),
-    allowed_traffic: pickArr(form.allowed_traffic, draft.allowed_traffic || []),
-    forbidden_traffic: pickArr(form.forbidden_traffic, draft.forbidden_traffic || []),
+    allowed_traffic: onlyMissing && form.allowed_traffic.length > 0 ? form.allowed_traffic : nextTraffic.length ? nextTraffic : form.allowed_traffic,
     product_url: pickStr(form.product_url, draft.product_url || ''),
     image_url: onlyMissing ? form.image_url || imageUrl || null : imageUrl || form.image_url,
     conversion_type: pickStr(form.conversion_type, recommendations.conversion_type),
@@ -51,15 +56,22 @@ export function draftMarks(): AiMarkedFields {
 }
 
 export function applyFormValue(form: OfferFormValues, field: string, value: unknown): OfferFormValues {
-  if (field === 'commission_value' || field === 'attribution_window_days') {
+  if (field === 'commission_value' || field === 'attribution_window_days' || field === 'hold_period_days') {
     return { ...form, [field]: String(value ?? '') };
   }
-  if (field === 'allowed_traffic' || field === 'forbidden_traffic') {
+  if (field === 'allowed_traffic' || field === 'geo_countries') {
     return { ...form, [field]: Array.isArray(value) ? value.map(String) : [] };
+  }
+  if (field === 'geo') {
+    return { ...form, geo_countries: parseGeoCodes(typeof value === 'string' ? value : Array.isArray(value) ? value.map(String) : []) };
+  }
+  if (field === 'category') {
+    return { ...form, category: resolveCategoryCode(String(value ?? '')) || '' };
   }
   return { ...form, [field]: value == null ? '' : String(value) } as OfferFormValues;
 }
 
 export function formValue(form: OfferFormValues, field: string): unknown {
+  if (field === 'geo') return form.geo_countries.join(',');
   return form[field as keyof OfferFormValues];
 }

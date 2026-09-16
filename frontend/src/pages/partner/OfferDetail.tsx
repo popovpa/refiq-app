@@ -21,7 +21,6 @@ import {
   formatCommissionPrimary,
   hasOfferStatData,
 } from '@/shared/offers/partnerOfferCardFormat';
-import { useAuth } from '@/shared/hooks/useAuth';
 import { usePromoteOwnOffer } from '@/shared/offers/usePromoteOwnOffer';
 import { OWN_OFFER_PROMOTE_PENDING_LABEL } from '@/shared/offers/promoteOwnOffer';
 import { cn } from '@/shared/utils/cn';
@@ -83,6 +82,7 @@ interface PartnerOfferDetail {
   partner_notes?: string | null;
   materials?: Material[];
   partner_status?: string | null;
+  rejection_reason?: string | null;
   is_own_offer?: boolean;
   commission_rules: CommissionRule[];
   clicks?: number;
@@ -117,13 +117,6 @@ const GEO_NAMES: Record<string, string> = {
   EU: 'Европа',
 };
 
-const FORBIDDEN_TRAFFIC_LABELS: Record<string, string> = {
-  motivated: 'Мотивированный трафик',
-  brand_bidding: 'Brand bidding',
-  cashback: 'Cashback',
-  ppc: 'PPC',
-};
-
 function formatGeo(geo?: string | null): string {
   if (!geo) return '—';
   return geo
@@ -136,20 +129,20 @@ function formatGeo(geo?: string | null): string {
     .join(', ');
 }
 
-function forbiddenTrafficLabel(value: string): string {
-  return FORBIDDEN_TRAFFIC_LABELS[value] || trafficLabel(value);
-}
-
 function partnerStatusBadge(
   joined: boolean,
   pending: boolean,
   accessPolicy: string,
+  rejected: boolean,
 ): { label: string; className: string } {
   if (joined) {
     return { label: 'Доступ предоставлен', className: 'bg-accent text-primary' };
   }
   if (pending) {
-    return { label: 'Заявка рассматривается', className: 'bg-yellow-50 text-yellow-700' };
+    return { label: 'На рассмотрении', className: 'bg-yellow-50 text-yellow-700' };
+  }
+  if (rejected) {
+    return { label: 'Доступ отклонён', className: 'bg-red-50 text-red-700' };
   }
   if (accessPolicy === 'open') {
     return { label: 'Публичный', className: 'bg-accent text-primary' };
@@ -183,7 +176,6 @@ function linkLabel(link: LinkItem): string {
 export function PartnerOfferDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
   const { addToast } = useToast();
   const { promote: promoteOwn, pending: promoteOwnPending } = usePromoteOwnOffer();
   const queryClient = useQueryClient();
@@ -200,6 +192,7 @@ export function PartnerOfferDetail() {
   const isOwn = Boolean(offer?.is_own_offer);
   const joined = !isOwn && offer?.partner_status === 'approved';
   const pending = !isOwn && offer?.partner_status === 'pending';
+  const rejected = !isOwn && offer?.partner_status === 'rejected';
   const offerPaused = offer?.status === 'paused';
 
   const { data: linksData } = useQuery<{ items: LinkItem[] }>({
@@ -251,17 +244,12 @@ export function PartnerOfferDetail() {
     return <p className="text-muted-foreground">Оффер не найден</p>;
   }
 
-  const partnerName =
-    offer.partner_profile?.name ||
-    [user?.first_name, user?.last_name].filter(Boolean).join(' ') ||
-    user?.email ||
-    'Партнёр';
   const rule = offer.commission_rules?.[0];
   const statusBadge = isOwn
     ? offerPaused
       ? { label: 'Приостановлен', className: 'bg-yellow-50 text-yellow-700' }
       : { label: 'Ваш оффер', className: 'bg-brand-soft text-brand' }
-    : partnerStatusBadge(joined, pending, offer.access_policy);
+    : partnerStatusBadge(joined, pending, offer.access_policy, rejected);
   const hasStats = hasOfferStatData({ clicks: offer.clicks ?? 0 });
   const epc = hasStats
     ? { value: `${formatNumber(offer.epc)} ₽` }
@@ -274,7 +262,7 @@ export function PartnerOfferDetail() {
   const hasMaterials = materials.length > 0;
   const canCreateLink =
     !isOwn && (joined || (!pending && offer.access_policy === 'open' && !joined));
-  const inviteOnlyBlocked = !isOwn && !joined && !pending && offer.access_policy === 'invite_only';
+  const inviteOnlyBlocked = !isOwn && !joined && !pending && !rejected && offer.access_policy === 'invite_only';
 
   const promoteOwnOffer = () => {
     promoteOwn(offer.id);
@@ -332,6 +320,9 @@ export function PartnerOfferDetail() {
                 Комиссия указана для внешних партнёров. При собственном продвижении комиссия не начисляется.
               </p>
             )}
+            {rejected && offer.rejection_reason && (
+              <p className="text-sm text-red-700 mt-1.5">{offer.rejection_reason}</p>
+            )}
           </div>
         </div>
 
@@ -346,21 +337,32 @@ export function PartnerOfferDetail() {
               Продвижение недоступно
             </Button>
           )}
-          {!isOwn && joined && <Button onClick={() => setLinkOpen(true)}>Получить ссылку</Button>}
+          {!isOwn && joined && <Button onClick={() => setLinkOpen(true)}>Создать ссылку</Button>}
           {!isOwn && pending && (
             <>
-              <Button variant="secondary" onClick={() => cancelRequest.mutate()}>
+              <Button disabled variant="secondary">
+                На рассмотрении
+              </Button>
+              <Button variant="ghost" onClick={() => cancelRequest.mutate()}>
                 Отменить заявку
               </Button>
             </>
           )}
-          {!isOwn && !joined && !pending && offer.access_policy === 'open' && (
+          {!isOwn && rejected && (
+            <>
+              <Button disabled variant="secondary">
+                Доступ отклонён
+              </Button>
+              <Button onClick={() => setRequestOpen(true)}>Продвигать оффер</Button>
+            </>
+          )}
+          {!isOwn && !joined && !pending && !rejected && offer.access_policy === 'open' && (
             <Button onClick={() => joinOpen.mutate()} disabled={joinOpen.isPending}>
-              Получить ссылку
+              Продвигать оффер
             </Button>
           )}
-          {!isOwn && !joined && !pending && offer.access_policy === 'approval' && (
-            <Button onClick={() => setRequestOpen(true)}>Запросить доступ</Button>
+          {!isOwn && !joined && !pending && !rejected && offer.access_policy === 'approval' && (
+            <Button onClick={() => setRequestOpen(true)}>Продвигать оффер</Button>
           )}
         </div>
       </div>
@@ -449,18 +451,6 @@ export function PartnerOfferDetail() {
               <span className="text-muted-foreground">—</span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-muted-foreground shrink-0">Запрещено:</span>
-            {(offer.forbidden_traffic || []).length ? (
-              (offer.forbidden_traffic || []).map((item) => (
-                <span key={item} className="ui-badge bg-orange-50 text-warning">
-                  {forbiddenTrafficLabel(item)}
-                </span>
-              ))
-            ) : (
-              <span className="text-muted-foreground">Нет дополнительных ограничений</span>
-            )}
-          </div>
           {offer.partner_notes && (
             <p className="text-xs text-muted-foreground pt-1 border-t border-border/60">
               {offer.partner_notes}
@@ -492,7 +482,7 @@ export function PartnerOfferDetail() {
                 disabled={joinOpen.isPending}
               >
                 <Plus size={14} />
-                Получить новую ссылку
+                Создать ссылку
               </Button>
             )}
           </div>
@@ -578,7 +568,7 @@ export function PartnerOfferDetail() {
         <GetLinkModal lockedOffer={offer} onClose={() => setLinkOpen(false)} />
       )}
       {requestOpen && (
-        <RequestAccessModal offerId={offer.id} partnerName={partnerName} onClose={() => setRequestOpen(false)} />
+        <RequestAccessModal offerId={offer.id} offerName={offer.name} onClose={() => setRequestOpen(false)} />
       )}
       {materialsOpen && (
         <MaterialsModal materials={materials} onClose={() => setMaterialsOpen(false)} />

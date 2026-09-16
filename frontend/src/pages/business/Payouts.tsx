@@ -4,6 +4,7 @@ import { api } from '@/shared/api/client';
 import { Skeleton } from '@/shared/components/Skeleton';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { cn } from '@/shared/utils/cn';
+import { partnerDisplayName } from '@/shared/partners/displayName';
 
 interface Payout {
   id: string;
@@ -96,7 +97,7 @@ export function BusinessPayouts() {
                     <td className="text-muted-foreground">
                       {new Date(payout.created_at).toLocaleDateString('ru-RU')}
                     </td>
-                    <td className="font-medium">{payout.partner_name}</td>
+                    <td className="font-medium">{partnerDisplayName(payout.partner_name)}</td>
                     <td className="text-muted-foreground">
                       {new Date(payout.period_start).toLocaleDateString('ru-RU')} — {new Date(payout.period_end).toLocaleDateString('ru-RU')}
                     </td>

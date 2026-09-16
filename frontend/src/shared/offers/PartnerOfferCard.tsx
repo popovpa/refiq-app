@@ -1,62 +1,60 @@
-import { type KeyboardEvent } from 'react';
-import { Button } from '@/shared/components/Button';
-import { OfferImage } from '@/shared/offers/OfferImage';
-import { conversionLabel } from '@/shared/offers/labels';
+import { type KeyboardEvent, type ReactNode } from 'react';
+import { ArrowRight, BarChart3, Globe, GraduationCap, Lock, ShoppingCart, Tag, TrendingUp } from 'lucide-react';
+import { findCategory, resolveCategoryCode } from '@/shared/catalog/categories';
 import { OWN_OFFER_PROMOTE_PENDING_LABEL } from '@/shared/offers/promoteOwnOffer';
+import { partnerAccessCta } from '@/shared/offers/partnerAccessCta';
+import { conversionLabel } from '@/shared/offers/labels';
 import type { OfferListItem } from '@/shared/offers/types';
 import {
-  accessBadge,
   formatCommissionContext,
   formatCommissionPrimary,
-  formatLinksCount,
   formatOfferCr,
   formatOfferEpc,
-  formatPartnerPromotionStats,
+  formatOfferGeo,
+  offerCardAccessLabel,
+  offerCardCategoryName,
+  offerCardMetricValue,
+  offerCardTitle,
 } from '@/shared/offers/partnerOfferCardFormat';
 import { cn } from '@/shared/utils/cn';
 
 interface PartnerOfferCardProps {
   offer: OfferListItem;
-  joined: boolean;
-  pending: boolean;
   joinPending: boolean;
   promoteOwnPending?: boolean;
   onOpen: (offerId: OfferListItem['id']) => void;
   onGetLink: (offer: OfferListItem) => void;
-  onOpenLinks: (offer: OfferListItem) => void;
   onJoinOpen: (offer: OfferListItem) => void;
   onRequestAccess: (offer: OfferListItem) => void;
-  onCancelRequest: (offerId: OfferListItem['id']) => void;
   onPromoteOwn?: (offer: OfferListItem) => void;
 }
 
 export function PartnerOfferCard({
   offer,
-  joined,
-  pending,
   joinPending,
   promoteOwnPending = false,
   onOpen,
   onGetLink,
-  onOpenLinks,
   onJoinOpen,
   onRequestAccess,
-  onCancelRequest,
   onPromoteOwn,
 }: PartnerOfferCardProps) {
   const rule = offer.commission_rules?.[0];
-  const access = accessBadge(offer.access_policy);
   const epc = formatOfferEpc(offer);
   const cr = formatOfferCr(offer);
-  const promotionStatus = offer.promotion_status || 'NOT_STARTED';
-  const activeLinks = offer.active_links_count ?? 0;
-  const totalLinks = offer.total_links_count ?? 0;
+  const categoryName = offerCardCategoryName(offer);
   const isOwn = Boolean(offer.is_own_offer);
-  const offerPaused = offer.status === 'paused';
-  const isPromoting = !isOwn && joined && promotionStatus === 'ACTIVE';
-  const isPaused = !isOwn && joined && promotionStatus === 'PAUSED';
-  const canCreateLink = !isOwn && joined && offer.status === 'active';
-  const myStats = formatPartnerPromotionStats(offer);
+  const cta = partnerAccessCta({
+    isOwn,
+    offerStatus: offer.status,
+    accessPolicy: offer.access_policy,
+    partnerStatus: offer.partner_status,
+    rejectionReason: offer.rejection_reason,
+  });
+  const statusNote =
+    cta.kind === 'rejected'
+      ? [cta.note, cta.reason].filter(Boolean).join(': ')
+      : cta.note || null;
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -77,186 +75,165 @@ export function PartnerOfferCard({
       onClick={() => onOpen(offer.id)}
       onKeyDown={handleKeyDown}
       className={cn(
-        'ui-card p-4 cursor-pointer',
-        'transition-[border-color,box-shadow,background-color] duration-[180ms] ease-in-out',
-        'hover:border-primary/25 hover:shadow-soft hover:bg-muted/20',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+        'group relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-3',
+        'shadow-[0_4px_16px_rgba(16,24,40,0.05)]',
+        'transition-[border-color,box-shadow] duration-150 ease-out',
+        'hover:border-black/[0.08] hover:shadow-[0_8px_24px_rgba(16,24,40,0.07)]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6BFF]/30',
       )}
     >
-      <div className="flex items-start gap-3">
-        <OfferImage src={offer.image_url} name={offer.name} size="md" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <h3 className="font-semibold text-[15px] leading-snug truncate">{offer.name}</h3>
-            {isOwn && (
-              <span
-                className="ui-badge shrink-0 bg-brand-soft text-brand"
-                title="Оффер создан вашим бизнесом."
-              >
-                Ваш оффер
-              </span>
-            )}
-            {isOwn && offerPaused && (
-              <span className="ui-badge shrink-0 bg-yellow-50 text-yellow-700">Приостановлен</span>
-            )}
+      {isOwn && (
+        <span className="absolute right-0 top-0 z-10 rounded-bl-xl bg-brand-soft px-2 py-1 text-[11px] font-medium leading-none text-brand">
+          Ваш оффер
+        </span>
+      )}
+
+      <div className="h-[136px] overflow-hidden rounded-xl bg-slate-100">
+        {offer.image_url ? (
+          <img src={offer.image_url} alt="" className="block size-full object-cover object-center" />
+        ) : (
+          <div className="flex size-full items-center justify-center px-3 text-center">
+            <p className="text-[13px] font-medium text-slate-400">Без изображения</p>
           </div>
-          {offer.category && (
-            <p className="text-xs text-muted-foreground mt-0.5">{offer.category}</p>
-          )}
-        </div>
-        <div className="text-right shrink-0 pl-2">
-          <p className="text-lg font-semibold text-brand leading-none tracking-tight">
+        )}
+      </div>
+
+      <h3 className="mt-2.5 min-h-[40px] text-[15px] font-semibold leading-5 tracking-tight text-slate-900 line-clamp-2">
+        {offerCardTitle(offer.name)}
+      </h3>
+
+      <div className="mt-1.5 min-h-6">
+        {categoryName ? (
+          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#E8F1FF] px-2 py-0.5 text-[11px] font-medium text-[#2F6BFF]">
+            <CategoryChipIcon offer={offer} />
+            <span className="truncate">{categoryName}</span>
+          </span>
+        ) : null}
+      </div>
+
+      <div className="mt-2.5 flex items-center gap-3">
+        <div className="min-w-0 shrink-0">
+          <p className="text-[26px] font-semibold leading-none tracking-tight text-[#2F6BFF]">
             {formatCommissionPrimary(rule)}
           </p>
-          <p className="text-[11px] leading-snug text-muted-foreground mt-1 max-w-[108px] ml-auto">
+          <p className="mt-1 max-w-[8.5rem] truncate text-[11px] leading-tight text-slate-500">
             {formatCommissionContext(offer.conversion_type, rule)}
           </p>
         </div>
+        <div className="h-10 w-px shrink-0 bg-slate-200" aria-hidden />
+        <div className="flex min-w-0 flex-col gap-1 text-[11px] leading-none text-slate-500">
+          <MetricRow icon={<ShoppingCart size={12} className="text-slate-400" />}>
+            {offerCardMetricValue(conversionLabel(offer.conversion_type))}
+          </MetricRow>
+          <MetricRow icon={<BarChart3 size={12} className="text-emerald-500" />} title={epc.title}>
+            EPC {offerCardMetricValue(epc.value)}
+          </MetricRow>
+          <MetricRow icon={<TrendingUp size={12} className="text-sky-500" />} title={cr.title}>
+            CR {offerCardMetricValue(cr.value)}
+          </MetricRow>
+        </div>
       </div>
 
-      {offer.description && (
-        <p className="text-sm text-muted-foreground line-clamp-2 mt-2 leading-snug">
-          {offer.description}
-        </p>
-      )}
-
-      <div className="mt-2.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs min-w-0">
-        <span className="font-medium text-foreground">{conversionLabel(offer.conversion_type)}</span>
-        <span className="text-muted-foreground" title={epc.title}>
-          EPC {epc.value}
-        </span>
-        <span className="text-muted-foreground" title={cr.title}>
-          CR {cr.value}
-        </span>
-        <span className="text-muted-foreground">GEO {offer.geo || '—'}</span>
+      <div className="mt-2.5 flex min-w-0 gap-1.5">
+        <InfoPill icon={<Globe size={12} />} className="bg-emerald-50 text-emerald-800">
+          {formatOfferGeo(offer.geo)}
+        </InfoPill>
+        <InfoPill icon={<Lock size={12} />} className="bg-slate-100 text-slate-600">
+          {offerCardAccessLabel(offer.access_policy)}
+        </InfoPill>
       </div>
 
-      <div className="mt-2.5 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2.5">
-        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
-          {!isOwn && <span className={cn('ui-badge shrink-0', access.className)}>{access.label}</span>}
-          {!isOwn && pending && (
-            <span className="ui-badge bg-yellow-50 text-yellow-700">Заявка рассматривается</span>
-          )}
-        </div>
-
-        <div
-          className="flex flex-col items-stretch sm:items-end gap-1.5 min-w-0"
-          onClick={stopCardActivation}
-          onKeyDown={stopCardActivation}
-        >
-          {isPromoting && (
-            <>
-              <span className="ui-badge w-fit bg-success/10 text-success inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden />
-                Продвигается · {formatLinksCount(activeLinks)}
-              </span>
-              <div className="text-right">
-                <p className="text-[11px] text-muted-foreground">Моё продвижение</p>
-                <p className="text-xs text-foreground mt-0.5" title={myStats.title}>
-                  {myStats.value}
-                </p>
-              </div>
-            </>
-          )}
-          {isPaused && (
-            <span className="ui-badge w-fit bg-yellow-50 text-yellow-700">
-              Продвижение приостановлено · {formatLinksCount(totalLinks)}
-            </span>
-          )}
-
-          <div className="flex flex-wrap items-center justify-end gap-2 min-h-8">
-            {isOwn && offer.status === 'active' && (
-              <Button
-                size="sm"
-                disabled={promoteOwnPending}
-                onClick={(event) => {
-                  stopCardActivation(event);
-                  onPromoteOwn?.(offer);
-                }}
-              >
-                {promoteOwnPending ? OWN_OFFER_PROMOTE_PENDING_LABEL : 'Продвигать свой оффер'}
-              </Button>
-            )}
-            {isOwn && offerPaused && (
-              <Button size="sm" disabled title="Оффер приостановлен">
-                Продвижение недоступно
-              </Button>
-            )}
-            {!isOwn && joined && (isPromoting || isPaused) && (
-              <>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={(event) => {
-                    stopCardActivation(event);
-                    onOpenLinks(offer);
-                  }}
-                >
-                  Мои ссылки
-                </Button>
-                {canCreateLink && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={(event) => {
-                      stopCardActivation(event);
-                      onGetLink(offer);
-                    }}
-                  >
-                    + Новая ссылка
-                  </Button>
-                )}
-              </>
-            )}
-            {!isOwn && joined && !isPromoting && !isPaused && (
-              <Button
-                size="sm"
-                onClick={(event) => {
-                  stopCardActivation(event);
-                  onGetLink(offer);
-                }}
-              >
-                Получить ссылку
-              </Button>
-            )}
-            {!isOwn && pending && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={(event) => {
-                  stopCardActivation(event);
-                  onCancelRequest(offer.id);
-                }}
-              >
-                Отменить заявку
-              </Button>
-            )}
-            {!isOwn && !joined && !pending && offer.access_policy === 'open' && (
-              <Button
-                size="sm"
-                onClick={(event) => {
-                  stopCardActivation(event);
-                  onJoinOpen(offer);
-                }}
-                disabled={joinPending}
-              >
-                Получить ссылку
-              </Button>
-            )}
-            {!isOwn && !joined && !pending && offer.access_policy === 'approval' && (
-              <Button
-                size="sm"
-                onClick={(event) => {
-                  stopCardActivation(event);
-                  onRequestAccess(offer);
-                }}
-              >
-                Запросить доступ
-              </Button>
-            )}
-          </div>
-        </div>
+      <div className="mt-auto flex min-h-[52px] flex-col justify-end pt-2.5" onClick={stopCardActivation} onKeyDown={stopCardActivation}>
+        {statusNote ? <p className="mb-1 truncate text-[11px] text-amber-700">{statusNote}</p> : <span className="mb-1 h-[16px]" />}
+        {cta.kind === 'own-active' && (
+          <CardCta disabled={promoteOwnPending} onClick={() => onPromoteOwn?.(offer)}>
+            {promoteOwnPending ? OWN_OFFER_PROMOTE_PENDING_LABEL : cta.label}
+          </CardCta>
+        )}
+        {cta.kind === 'own-paused' && (
+          <CardCta disabled title={cta.note || undefined}>
+            {cta.label}
+          </CardCta>
+        )}
+        {cta.kind === 'create-link' && (
+          <CardCta onClick={() => onGetLink(offer)}>{cta.label}</CardCta>
+        )}
+        {cta.kind === 'pending' && (
+          <CardCta tone="muted" disabled>
+            {cta.label}
+          </CardCta>
+        )}
+        {cta.kind === 'rejected' && (
+          <CardCta onClick={() => onRequestAccess(offer)}>{cta.reapplyLabel || 'Продвигать оффер'}</CardCta>
+        )}
+        {cta.kind === 'promote-open' && (
+          <CardCta disabled={joinPending} onClick={() => onJoinOpen(offer)}>
+            {cta.label}
+          </CardCta>
+        )}
+        {cta.kind === 'promote-approval' && (
+          <CardCta onClick={() => onRequestAccess(offer)}>{cta.label}</CardCta>
+        )}
+        {cta.kind === 'invite-only' && (
+          <CardCta disabled>{cta.label}</CardCta>
+        )}
       </div>
     </article>
+  );
+}
+
+function CategoryChipIcon({ offer }: { offer: OfferListItem }) {
+  const code = resolveCategoryCode(offer.category_code || offer.category) || offer.category;
+  const Icon = findCategory(code)?.verticalCode === 'EDUCATION' ? GraduationCap : Tag;
+  return <Icon size={11} strokeWidth={2} aria-hidden />;
+}
+
+function MetricRow({ icon, title, children }: { icon: ReactNode; title?: string; children: ReactNode }) {
+  return (
+    <p className="flex min-w-0 items-center gap-1.5" title={title}>
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{children}</span>
+    </p>
+  );
+}
+
+function InfoPill({ icon, className, children }: { icon: ReactNode; className: string; children: ReactNode }) {
+  return (
+    <span className={cn('inline-flex min-h-7 min-w-0 flex-1 items-center justify-center gap-1 rounded-full px-2 text-[11px] font-medium', className)}>
+      <span className="shrink-0 opacity-80">{icon}</span>
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
+
+function CardCta({
+  children,
+  onClick,
+  disabled,
+  title,
+  tone = 'accent',
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  title?: string;
+  tone?: 'accent' | 'muted';
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        'inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg text-[13px] font-semibold transition-colors',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6BFF]/30',
+        'disabled:pointer-events-none disabled:opacity-50',
+        tone === 'accent' ? 'bg-[#2F6BFF] text-white hover:bg-[#2458E0]' : 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+      )}
+    >
+      {children}
+      {tone === 'accent' && <ArrowRight size={14} strokeWidth={2.25} aria-hidden />}
+    </button>
   );
 }

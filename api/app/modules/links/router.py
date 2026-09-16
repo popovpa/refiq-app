@@ -71,12 +71,14 @@ def _serialize_link(
 
 
 def _assert_traffic_source_allowed(offer: Offer, traffic_source: str) -> None:
-    forbidden = set(offer.forbidden_traffic or [])
-    allowed = offer.allowed_traffic or []
-    if traffic_source in forbidden or (allowed and traffic_source not in allowed):
+    from app.modules.catalog.traffic import normalize_traffic_source
+
+    source = normalize_traffic_source(traffic_source) or traffic_source
+    allowed = {normalize_traffic_source(item) or item for item in (offer.allowed_traffic or [])}
+    if source not in allowed:
         raise AppError(
-            "TRAFFIC_SOURCE_FORBIDDEN",
-            "Этот источник трафика запрещён для оффера.",
+            "TRAFFIC_SOURCE_NOT_ALLOWED",
+            "Этот источник трафика не разрешён для оффера.",
             400,
         )
 

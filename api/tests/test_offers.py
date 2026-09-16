@@ -2,7 +2,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from tests.conftest import fastapi_app
-from tests.helpers import become_partner, register_business, register_user
+from tests.helpers import become_partner, offer_payload, register_business, register_user
 
 
 async def _register_business(client: AsyncClient, email: str = "biz-offer@example.com") -> None:
@@ -22,29 +22,29 @@ async def _external_partner(email: str, display_name: str = "Partner") -> AsyncC
 @pytest.mark.asyncio
 async def test_business_offer_lifecycle(client: AsyncClient):
     await _register_business(client)
-    created = await client.post("/api/v1/business/offers", json={
-        "name": "CRM Pro",
-        "description": "Партнёрка CRM",
-        "category": "SaaS",
-        "geo": "RU",
-        "conversion_type": "sale",
-        "commission_type": "percent",
-        "commission_value": 20,
-        "attribution_window_days": 30,
-        "access_policy": "approval",
-        "allowed_traffic": ["seo", "telegram"],
-        "forbidden_traffic": ["ppc"],
-        "partner_notes": "Без брендовых запросов",
-        "status": "draft",
-        "product_url": "https://crmpro.example.com",
-    })
+    created = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="CRM Pro",
+        description="Партнёрка CRM",
+        category="SaaS",
+        geo="RU",
+        conversion_type="sale",
+        commission_type="percent",
+        commission_value=20,
+        attribution_window_days=30,
+        access_policy="approval",
+        allowed_traffic=["seo", "telegram"],
+        partner_notes="Без брендовых запросов",
+        status="draft",
+        product_url="https://crmpro.example.com",
+    ))
     assert created.status_code == 200
     data = created.json()
     assert "destination_url" not in data
     offer_id = data["id"]
     assert data["status"] == "draft"
-    assert data["category"] == "SaaS"
-    assert data["allowed_traffic"] == ["seo", "telegram"]
+    assert data["category"] == "CRM"
+    assert data["allowed_traffic"] == ["SEO", "MESSENGERS"]
+    assert data["hold_period_days"] == 0
 
     published = await client.patch(f"/api/v1/business/offers/{offer_id}", json={"status": "active"})
     assert published.status_code == 200
@@ -68,16 +68,17 @@ async def test_business_offer_lifecycle(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_partner_approval_and_link_flow(client: AsyncClient):
     await _register_business(client, "approval-biz@example.com")
-    created = await client.post("/api/v1/business/offers", json={
-        "name": "TaskFlow",
-        "description": "Регистрации",
-        "category": "SaaS",
-        "access_policy": "approval",
-        "status": "active",
-        "product_url": "https://taskflow.example.com",
-        "commission_type": "fixed",
-        "commission_value": 500,
-    })
+    created = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="TaskFlow",
+        description="Регистрации",
+        category="SaaS",
+        access_policy="approval",
+        status="active",
+        product_url="https://taskflow.example.com",
+        commission_type="fixed",
+        commission_value=500,
+        allowed_traffic=["seo", "telegram"],
+    ))
     assert created.status_code == 200
     offer_id = created.json()["id"]
 
@@ -88,11 +89,7 @@ async def test_partner_approval_and_link_flow(client: AsyncClient):
         assert any(item["id"] == offer_id for item in catalog.json()["items"])
         assert next(item for item in catalog.json()["items"] if item["id"] == offer_id)["is_own_offer"] is False
 
-        join = await partner.post(f"/api/v1/partner/offers/{offer_id}/join", json={
-            "comment": "Веду Telegram-канал",
-            "traffic_sources": ["telegram"],
-            "geo": "RU",
-        })
+        join = await partner.post(f"/api/v1/partner/offers/{offer_id}/join")
         assert join.status_code == 200
         assert join.json()["status"] == "pending"
 
@@ -108,6 +105,12 @@ async def test_partner_approval_and_link_flow(client: AsyncClient):
         pending = detail.json()["pending_applications"]
         assert len(pending) == 1
         access_id = pending[0]["id"]
+        assert pending[0]["created_at"]
+        assert "traffic_sources" not in pending[0]
+        assert "topics" not in pending[0]
+        assert "geo" not in pending[0]
+        assert "comment" not in pending[0]
+        assert "business_comment" not in pending[0]
 
         approve = await client.post(f"/api/v1/business/offers/{offer_id}/partners/{access_id}/approve")
         assert approve.status_code == 200
@@ -127,12 +130,12 @@ async def test_partner_approval_and_link_flow(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_invite_only_cannot_self_join(client: AsyncClient):
     await _register_business(client, "invite-biz@example.com")
-    created = await client.post("/api/v1/business/offers", json={
-        "name": "Private Offer",
-        "access_policy": "invite_only",
-        "status": "active",
-        "product_url": "https://private.example.com",
-    })
+    created = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="Private Offer",
+        access_policy="invite_only",
+        status="active",
+        product_url="https://private.example.com",
+    ))
     offer_id = created.json()["id"]
     partner = await _external_partner("invite-guest@example.com", "Guest")
     try:
@@ -145,12 +148,12 @@ async def test_invite_only_cannot_self_join(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_cancel_pending_request(client: AsyncClient):
     await _register_business(client, "cancel-biz@example.com")
-    created = await client.post("/api/v1/business/offers", json={
-        "name": "Lead Offer",
-        "access_policy": "approval",
-        "status": "active",
-        "product_url": "https://lead.example.com",
-    })
+    created = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="Lead Offer",
+        access_policy="approval",
+        status="active",
+        product_url="https://lead.example.com",
+    ))
     offer_id = created.json()["id"]
     partner = await _external_partner("cancel-partner@example.com", "Applicant")
     try:
@@ -166,14 +169,15 @@ async def test_cancel_pending_request(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_offer_detail_counts_clicks_per_link(client: AsyncClient):
     await _register_business(client, "link-stats-biz@example.com")
-    created = await client.post("/api/v1/business/offers", json={
-        "name": "Stats Offer",
-        "access_policy": "open",
-        "status": "active",
-        "product_url": "https://stats.example.com/pricing",
-        "commission_type": "percent",
-        "commission_value": 10,
-    })
+    created = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="Stats Offer",
+        access_policy="open",
+        status="active",
+        product_url="https://stats.example.com/pricing",
+        commission_type="percent",
+        commission_value=10,
+        allowed_traffic=["seo", "telegram"],
+    ))
     assert created.status_code == 200
     offer_id = created.json()["id"]
 
@@ -220,14 +224,15 @@ async def test_offer_detail_counts_clicks_per_link(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_partner_catalog_includes_promotion_status(client: AsyncClient):
     await _register_business(client, "promo-card-biz@example.com")
-    created = await client.post("/api/v1/business/offers", json={
-        "name": "Promo Offer",
-        "access_policy": "open",
-        "status": "active",
-        "product_url": "https://promo.example.com/pricing",
-        "commission_type": "percent",
-        "commission_value": 10,
-    })
+    created = await client.post("/api/v1/business/offers", json=offer_payload(
+        name="Promo Offer",
+        access_policy="open",
+        status="active",
+        product_url="https://promo.example.com/pricing",
+        commission_type="percent",
+        commission_value=10,
+        allowed_traffic=["seo", "telegram"],
+    ))
     assert created.status_code == 200
     offer_id = created.json()["id"]
 

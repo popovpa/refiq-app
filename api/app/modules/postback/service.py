@@ -121,6 +121,7 @@ class PostbackService:
             currency=currency,
             commission_amount=float(commission),
             status="pending",
+            hold_period_days_snapshot=int(offer.hold_period_days or 0),
             converted_at=datetime.now(timezone.utc),
         )
         self.db.add(conversion)

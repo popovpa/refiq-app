@@ -7,6 +7,30 @@ from app.modules.users.models import User
 from tests.conftest import TestingSessionLocal
 
 
+OFFER_REQUIRED = {
+    "description": "Партнёрское предложение",
+    "category": "SaaS",
+    "geo": "RU",
+    "conversion_type": "sale",
+    "commission_type": "percent",
+    "commission_value": 10,
+    "attribution_window_days": 30,
+    "hold_period_days": 0,
+    "access_policy": "open",
+    "allowed_traffic": ["EMAIL"],
+}
+
+
+def offer_payload(**overrides):
+    payload = {
+        "name": "Test offer",
+        "status": "draft",
+        **OFFER_REQUIRED,
+    }
+    payload.update(overrides)
+    return payload
+
+
 BUSINESS_PAYLOAD = {
     "name": "Acme",
     "website": "https://acme.example.com",
@@ -62,3 +86,42 @@ async def become_partner(client: AsyncClient, display_name: str | None = None):
 async def register_business(client: AsyncClient, email: str, **overrides):
     await register_user(client, email)
     return await become_business(client, work_email=email, **overrides)
+
+
+async def external_partner(email: str, display_name: str = "Partner") -> AsyncClient:
+    from httpx import ASGITransport
+    from tests.conftest import fastapi_app
+
+    partner = AsyncClient(transport=ASGITransport(app=fastapi_app), base_url="http://test")
+    await register_user(partner, email)
+    await become_partner(partner, display_name)
+    switch = await partner.post("/api/v1/me/context", json={"role": "partner"})
+    assert switch.status_code == 200, switch.text
+    return partner
+
+
+async def partner_with_access(offer_id: str | int, email: str, display_name: str = "Partner") -> AsyncClient:
+    partner = await external_partner(email, display_name)
+    join = await partner.post(f"/api/v1/partner/offers/{offer_id}/join")
+    assert join.status_code == 200, join.text
+    return partner
+
+
+async def create_partner_link(
+    partner: AsyncClient,
+    offer_id: str | int,
+    *,
+    name: str = "Telegram",
+    traffic_source: str = "telegram",
+    destination_url: str | None = None,
+) -> dict:
+    payload = {
+        "offer_id": offer_id,
+        "name": name,
+        "traffic_source": traffic_source,
+    }
+    if destination_url:
+        payload["destination_url"] = destination_url
+    created = await partner.post("/api/v1/partner/links", json=payload)
+    assert created.status_code == 200, created.text
+    return created.json()

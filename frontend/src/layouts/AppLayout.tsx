@@ -13,6 +13,7 @@ export function AppLayout() {
   const isProfile = location.pathname === '/profile';
   const isPartnerOfferDetail = /^\/partner\/offers\/[^/]+$/.test(location.pathname);
   const isBusinessOverview = location.pathname === '/business';
+  const isOfferWizard = /\/business\/offers\/(new|[^/]+\/edit)$/.test(location.pathname);
   const isFixedHeightPage = isProfile || isPartnerOfferDetail || isBusinessOverview;
 
   if (isLoading) {
@@ -51,7 +52,8 @@ export function AppLayout() {
         >
           <div
             className={cn(
-              'max-w-content mx-auto w-full',
+              'mx-auto w-full',
+              !isOfferWizard && 'max-w-content',
               isFixedHeightPage && 'flex-1 min-h-0 flex flex-col overflow-hidden',
             )}
           >

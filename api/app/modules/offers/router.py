@@ -7,23 +7,41 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.date_range import resolve_query_range
 from app.core.database import get_db
-from app.core.exceptions import ForbiddenError, NotFoundError
 from app.core.ids import parse_id
 from app.core.permissions import require_business_role
 from app.modules.conversions.models import Conversion
 from app.modules.links.models import TrackingLink
+from app.core.exceptions import AppError, ForbiddenError, NotFoundError
+from app.modules.catalog.models import OfferCategory
+from app.modules.catalog.seed import ensure_catalog
 from app.modules.offers.models import Offer, OfferCommissionRule, OfferPartnerAccess
 from app.modules.offers.service import (
     apply_commission_update,
     ensure_business_partner,
+    offer_category_filter,
     offer_link_stats,
     offer_public_fields,
     offer_source_stats,
     offer_stats,
     offer_timeseries,
     partner_access_query,
+    serialize_business_partner_access,
+)
+from app.modules.offers.validation import (
+    normalize_partner_notes,
+    serialize_geo,
+    validate_access_policy,
+    validate_allowed_traffic,
+    validate_attribution_window_days,
+    validate_category_code,
+    validate_commission,
+    validate_conversion_type,
+    validate_geo_codes,
+    validate_hold_period_days,
+    validate_offer_description,
 )
 from app.modules.partners.models import PartnerProfile
+from app.modules.partners.privacy import partner_public_display_name_from, strip_partner_contact_fields
 from app.modules.products.models import Product
 from app.modules.users.models import User
 
@@ -38,11 +56,13 @@ class CreateOfferRequest(BaseModel):
     description: str | None = None
     image_url: str | None = None
     category: str | None = None
-    geo: str | None = None
+    category_id: int | None = None
+    geo: str | list[str] | None = None
     product_name: str | None = None
     product_url: str | None = None
     conversion_type: str = "sale"
     attribution_window_days: int = 30
+    hold_period_days: int = 0
     commission_type: str = "percent"
     commission_value: float = 10.0
     commission_currency: str | None = None
@@ -60,13 +80,15 @@ class UpdateOfferRequest(BaseModel):
     description: str | None = None
     image_url: str | None = None
     category: str | None = None
-    geo: str | None = None
+    category_id: int | None = None
+    geo: str | list[str] | None = None
     product_url: str | None = None
     status: str | None = None
     visibility: str | None = None
     access_policy: str | None = None
     conversion_type: str | None = None
     attribution_window_days: int | None = None
+    hold_period_days: int | None = None
     commission_type: str | None = None
     commission_value: float | None = None
     commission_currency: str | None = None
@@ -76,9 +98,27 @@ class UpdateOfferRequest(BaseModel):
     materials: list[dict] | None = None
 
 
+async def _resolve_category(db: AsyncSession, category: str | None, category_id: int | None) -> OfferCategory:
+    catalog = await ensure_catalog(db)
+    if category_id is not None:
+        row = (await db.execute(select(OfferCategory).where(OfferCategory.id == category_id))).scalar_one_or_none()
+        if not row or not row.is_active:
+            raise AppError("INVALID_CATEGORY", "Выберите категорию", 400)
+        return row
+    code = validate_category_code(category)
+    row = catalog.get(code)
+    if not row or not row.is_active:
+        raise AppError("INVALID_CATEGORY", "Выберите категорию", 400)
+    return row
+
+
 class InvitePartnerRequest(BaseModel):
     email: str | None = None
     partner_id: int | None = None
+
+
+class RejectPartnerRequest(BaseModel):
+    reason: str
 
 
 async def _get_business_offer(db: AsyncSession, offer_id: str, business_id: int) -> Offer:
@@ -110,7 +150,7 @@ async def list_offers(
     if access_policy:
         filters.append(Offer.access_policy == access_policy)
     if category:
-        filters.append(Offer.category == category)
+        filters.append(offer_category_filter(category))
     if q:
         filters.append(Offer.name.ilike(f"%{q.strip()}%"))
 
@@ -149,14 +189,22 @@ async def create_offer(
     business_id = parse_id(session_data["active_business_id"])
     if data.status not in VALID_STATUSES:
         raise ForbiddenError("Invalid offer status")
-    if data.access_policy not in VALID_ACCESS:
-        raise ForbiddenError("Invalid access policy")
+    access_policy = validate_access_policy(data.access_policy)
+    conversion_type = validate_conversion_type(data.conversion_type)
+    commission_type, commission_value = validate_commission(data.commission_type, data.commission_value)
+    attribution_window_days = validate_attribution_window_days(data.attribution_window_days)
+    hold_period_days = validate_hold_period_days(data.hold_period_days)
+    category_row = await _resolve_category(db, data.category, data.category_id)
+    geo_codes = validate_geo_codes(data.geo)
+    allowed_traffic = validate_allowed_traffic(data.allowed_traffic)
+    description = validate_offer_description(data.description)
+    partner_notes = normalize_partner_notes(data.partner_notes)
 
     product = Product(
         business_id=business_id,
         name=data.product_name or data.name,
         url=data.product_url,
-        description=data.description,
+        description=description,
         status="active",
     )
     db.add(product)
@@ -166,19 +214,21 @@ async def create_offer(
         business_id=business_id,
         product_id=product.id,
         name=data.name,
-        description=data.description,
+        description=description,
         image_url=data.image_url,
-        category=data.category,
-        geo=data.geo,
+        category=category_row.code,
+        category_id=category_row.id,
+        geo=serialize_geo(geo_codes),
+        hold_period_days=hold_period_days,
         status=data.status,
         visibility=data.visibility,
-        access_policy=data.access_policy,
-        conversion_type=data.conversion_type,
-        attribution_window_days=data.attribution_window_days,
+        access_policy=access_policy,
+        conversion_type=conversion_type,
+        attribution_window_days=attribution_window_days,
         currency=data.commission_currency or "RUB",
-        allowed_traffic=data.allowed_traffic or [],
-        forbidden_traffic=data.forbidden_traffic or [],
-        partner_notes=data.partner_notes,
+        allowed_traffic=allowed_traffic,
+        forbidden_traffic=[],
+        partner_notes=partner_notes,
         materials=data.materials or [],
     )
     db.add(offer)
@@ -187,8 +237,8 @@ async def create_offer(
     db.add(
         OfferCommissionRule(
             offer_id=offer.id,
-            type=data.commission_type,
-            value=data.commission_value,
+            type=commission_type,
+            value=commission_value,
             currency=data.commission_currency,
         )
     )
@@ -233,20 +283,7 @@ async def get_offer(
     top = []
     for access, profile, user in access_rows:
         partner_stats = await offer_stats(db, offer.id, partner_id=profile.id, date_range=date_range)
-        item = {
-            "id": access.id,
-            "partner_id": profile.id,
-            "name": profile.display_name or user.email,
-            "email": user.email,
-            "status": access.status,
-            "source": access.source,
-            "comment": access.comment,
-            "traffic_sources": access.traffic_sources or [],
-            "topics": access.topics,
-            "geo": access.geo,
-            "created_at": access.created_at.isoformat() if access.created_at else None,
-            **partner_stats,
-        }
+        item = serialize_business_partner_access(access, profile, user, partner_stats)
         partners.append(item)
         if access.status == "pending":
             pending.append(item)
@@ -265,8 +302,9 @@ async def get_offer(
     )
     promotion_rows = (
         await db.execute(
-            select(TrackingLink, PartnerProfile)
+            select(TrackingLink, PartnerProfile, User)
             .join(PartnerProfile, TrackingLink.partner_id == PartnerProfile.id)
+            .join(User, PartnerProfile.user_id == User.id)
             .where(TrackingLink.offer_id == offer.id)
             .order_by(TrackingLink.created_at.desc())
         )
@@ -275,16 +313,17 @@ async def get_offer(
     own_stats = await offer_source_stats(db, offer.id, business_owned=True, date_range=date_range)
     partner_stats = await offer_source_stats(db, offer.id, business_owned=False, date_range=date_range)
     promotion_links = []
-    for link, profile in promotion_rows:
+    for link, profile, user in promotion_rows:
         link_stats = stats_by_link.get(link.id, {"clicks": 0, "conversions": 0})
+        public_name = partner_public_display_name_from(profile, user)
         promotion_links.append(
             {
                 "id": link.id,
-                "name": link.name or profile.display_name,
+                "name": link.name or public_name,
                 "url": f"https://go.refiq.ru/{link.short_code}",
                 "short_code": link.short_code,
                 "destination_url": link.destination_url,
-                "partner_name": profile.display_name,
+                "partner_name": public_name,
                 "traffic_source": link.traffic_source,
                 "status": link.status,
                 "clicks": link_stats["clicks"],
@@ -340,13 +379,40 @@ async def update_offer(
 
     if payload.get("status") and payload["status"] not in VALID_STATUSES:
         raise ForbiddenError("Invalid offer status")
-    if payload.get("access_policy") and payload["access_policy"] not in VALID_ACCESS:
-        raise ForbiddenError("Invalid access policy")
+    if "access_policy" in payload:
+        payload["access_policy"] = validate_access_policy(payload["access_policy"])
+    if "conversion_type" in payload:
+        payload["conversion_type"] = validate_conversion_type(payload["conversion_type"])
+    if "attribution_window_days" in payload:
+        payload["attribution_window_days"] = validate_attribution_window_days(payload["attribution_window_days"])
+    if "hold_period_days" in payload:
+        payload["hold_period_days"] = validate_hold_period_days(payload["hold_period_days"])
+    if "geo" in payload:
+        payload["geo"] = serialize_geo(validate_geo_codes(payload["geo"]))
+    if "allowed_traffic" in payload:
+        payload["allowed_traffic"] = validate_allowed_traffic(payload["allowed_traffic"])
+        payload["forbidden_traffic"] = []
+    if "description" in payload:
+        payload["description"] = validate_offer_description(payload["description"])
+    if "partner_notes" in payload:
+        payload["partner_notes"] = normalize_partner_notes(payload["partner_notes"])
+    category = payload.pop("category", None)
+    category_id = payload.pop("category_id", None)
+    if category is not None or category_id is not None:
+        category_row = await _resolve_category(db, category, category_id)
+        payload["category"] = category_row.code
+        payload["category_id"] = category_row.id
 
     product_url = payload.pop("product_url", None)
     commission_type = payload.pop("commission_type", None)
     commission_value = payload.pop("commission_value", None)
     commission_currency = payload.pop("commission_currency", None)
+    if commission_type is not None or commission_value is not None:
+        current = offer.commission_rules[0] if offer.commission_rules else None
+        validate_commission(
+            commission_type or (current.type if current else "percent"),
+            commission_value if commission_value is not None else (float(current.value) if current else None),
+        )
 
     for key, value in payload.items():
         setattr(offer, key, value)
@@ -384,6 +450,7 @@ async def approve_partner(
         raise NotFoundError("Application")
     access.status = "approved"
     access.approved_at = datetime.now(timezone.utc)
+    access.rejection_reason = None
     await ensure_business_partner(db, offer.business_id, access.partner_id, "active")
     return {"status": "approved"}
 
@@ -392,6 +459,7 @@ async def approve_partner(
 async def reject_partner(
     offer_id: str,
     access_id: str,
+    data: RejectPartnerRequest,
     session_data: dict = Depends(require_business_role),
     db: AsyncSession = Depends(get_db),
 ):
@@ -407,7 +475,15 @@ async def reject_partner(
     ).scalar_one_or_none()
     if not access:
         raise NotFoundError("Application")
+    if access.status != "pending":
+        raise ForbiddenError("Only a pending request can be rejected")
+    reason = (data.reason or "").strip()
+    if not reason:
+        raise AppError("INVALID_REJECTION_REASON", "Укажите причину отказа", 400)
+    if len(reason) > 1000:
+        raise AppError("INVALID_REJECTION_REASON", "Максимальная длина — 1000 символов", 400)
     access.status = "rejected"
+    access.rejection_reason = reason
     return {"status": "rejected"}
 
 

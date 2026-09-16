@@ -1,10 +1,10 @@
 import type { OfferFormValues } from '@/shared/offers/types';
 
 export const WIZARD_STEPS = [
-  { id: 'product', label: 'Продукт' },
-  { id: 'reward', label: 'Вознаграждение' },
-  { id: 'promotion', label: 'Условия продвижения' },
-  { id: 'review', label: 'Проверка и публикация' },
+  { id: 'basics', label: 'Основное' },
+  { id: 'traffic', label: 'Трафик' },
+  { id: 'conversions', label: 'Конверсии' },
+  { id: 'review', label: 'Проверка' },
 ] as const;
 
 export type WizardStepId = (typeof WIZARD_STEPS)[number]['id'];
@@ -20,28 +20,18 @@ export const CONVERSION_GOAL_CARDS = [
     title: 'Заявка',
     description: 'Партнёр получает вознаграждение за подтверждённую заявку.',
   },
-  {
-    value: 'signup',
-    title: 'Регистрация',
-    description: 'Партнёр получает вознаграждение за подтверждённую регистрацию.',
-  },
-  {
-    value: 'application',
-    title: 'Одобренная заявка',
-    description: 'Партнёр получает вознаграждение после одобрения заявки.',
-  },
 ] as const;
 
 export const ACCESS_CARDS = [
   {
     value: 'open',
-    title: 'Все партнёры',
-    description: 'Оффер доступен всем подходящим партнёрам.',
+    title: 'Всем партнёрам',
+    description: 'Оффер виден всем партнёрам, и они могут сразу начать продвижение.',
   },
   {
     value: 'approval',
-    title: 'Только одобренные',
-    description: 'Партнёр должен получить одобрение бизнеса.',
+    title: 'После одобрения',
+    description: 'Партнёры смогут продвигать оффер после вашей модерации.',
   },
   {
     value: 'invite_only',
@@ -51,40 +41,30 @@ export const ACCESS_CARDS = [
 ] as const;
 
 export const ATTRIBUTION_PRESETS = [7, 14, 30, 60, 90] as const;
+export const HOLD_PRESETS = [0, 3, 7, 14, 30] as const;
 
-export const TRAFFIC_SOURCE_CARDS = [
-  { keys: ['content', 'seo'], label: 'Сайты и блоги' },
-  { keys: ['telegram'], label: 'Telegram' },
-  { keys: ['social'], label: 'Социальные сети' },
-  { keys: ['email'], label: 'Email' },
-  { keys: ['ppc'], label: 'Контекстная реклама' },
-  { keys: ['youtube'], label: 'Видео' },
-] as const;
-
-export const RESTRICTION_PRESETS = [
-  { id: 'brand_bidding', label: 'Brand bidding запрещён', traffic: ['ppc'] as const },
-  { id: 'spam', label: 'Spam запрещён', note: 'Запрещён spam-трафик.' },
-  { id: 'motivated', label: 'Мотивированный трафик запрещён', note: 'Запрещён мотивированный трафик.' },
-  { id: 'cashback', label: 'Cashback запрещён', note: 'Запрещён cashback-трафик.' },
-  { id: 'coupon', label: 'Coupon traffic запрещён', note: 'Запрещён coupon-трафик.' },
-  { id: 'misleading', label: 'Misleading advertising запрещён', note: 'Запрещена вводящая в заблуждение реклама.' },
-] as const;
-
-export function buildPartnerNotes(form: OfferFormValues): string | null {
-  const parts: string[] = [];
-  if (form.restrictions_custom.trim()) parts.push(form.restrictions_custom.trim());
-  if (form.partner_notes.trim()) parts.push(form.partner_notes.trim());
-  return parts.length ? parts.join('\n\n') : null;
+export function daysLabel(days: number): string {
+  const mod10 = days % 10;
+  const mod100 = days % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${days} день`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${days} дня`;
+  return `${days} дней`;
 }
 
 export function commissionExample(form: OfferFormValues): string | null {
   const value = Number(form.commission_value);
   if (!(value > 0)) return null;
   if (form.commission_type === 'percent') {
-    const sample = 20000;
-    const payout = Math.round((sample * value) / 100);
+    const payout = Math.round((20000 * value) / 100);
     return `При продаже на 20 000 ₽ партнёр получит ${payout.toLocaleString('ru-RU')} ₽.`;
   }
   const currency = form.commission_currency === 'USD' ? '$' : form.commission_currency === 'EUR' ? '€' : '₽';
   return `Партнёр получит ${value.toLocaleString('ru-RU')} ${currency} за каждую подтверждённую конверсию.`;
+}
+
+export function holdHelper(days: string): string {
+  if (days === '0') {
+    return 'После подтверждения конверсии комиссия станет доступна к выплате сразу.';
+  }
+  return `После подтверждения конверсии комиссия станет доступна к выплате через ${daysLabel(Number(days))}.`;
 }

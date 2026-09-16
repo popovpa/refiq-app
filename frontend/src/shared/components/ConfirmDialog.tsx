@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { Button } from '@/shared/components/Button';
+import { cn } from '@/shared/utils/cn';
 
 export function ConfirmDialog({
   title,
@@ -10,7 +11,10 @@ export function ConfirmDialog({
   onClose,
   pending,
   cancelLabel,
+  pendingLabel,
+  confirmDisabled,
   confirmVariant = 'primary',
+  className,
 }: {
   title: string;
   children: ReactNode;
@@ -19,12 +23,15 @@ export function ConfirmDialog({
   onClose: () => void;
   pending?: boolean;
   cancelLabel?: string;
+  pendingLabel?: string;
+  confirmDisabled?: boolean;
   confirmVariant?: 'primary' | 'destructive';
+  className?: string;
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-foreground/30" onClick={onClose} />
-      <div className="relative ui-card w-full max-w-lg p-5 space-y-4 shadow-soft">
+      <div className={cn('relative ui-card w-full max-w-md p-5 space-y-4 shadow-soft', className)}>
         <div className="flex items-start justify-between gap-3">
           <h2 className="ui-section-title">{title}</h2>
           <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -36,8 +43,8 @@ export function ConfirmDialog({
           <Button variant="secondary" onClick={onClose} disabled={pending}>
             {cancelLabel ?? 'Отмена'}
           </Button>
-          <Button variant={confirmVariant} onClick={onConfirm} disabled={pending}>
-            {pending ? 'Сохранение...' : confirmLabel}
+          <Button variant={confirmVariant} onClick={onConfirm} disabled={pending || confirmDisabled}>
+            {pending ? pendingLabel ?? 'Сохранение...' : confirmLabel}
           </Button>
         </div>
       </div>

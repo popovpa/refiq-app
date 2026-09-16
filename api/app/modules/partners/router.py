@@ -14,7 +14,15 @@ from app.modules.partners.models import PartnerProfile, BusinessPartner
 from app.modules.conversions.models import Conversion
 from app.modules.links.models import Click, TrackingLink, TrackingLinkStatus
 from app.modules.offers.models import Offer, OfferPartnerAccess
-from app.modules.offers.service import cr as conversion_rate, offer_public_fields, offer_stats
+from app.modules.offers.service import (
+    ACTIVE_ACCESS_STATUSES,
+    apply_partner_offer_request,
+    cr as conversion_rate,
+    offer_category_filter,
+    offer_public_fields,
+    offer_stats,
+    serialize_partner_application,
+)
 from app.modules.commissions.models import Commission
 from app.modules.payouts.models import Payout
 from app.modules.users.models import User
@@ -188,10 +196,7 @@ async def partner_dashboard(
 
 
 class JoinOfferRequest(BaseModel):
-    comment: str | None = None
-    traffic_sources: list[str] | None = None
-    topics: str | None = None
-    geo: str | None = None
+    model_config = {"extra": "ignore"}
 
 
 def _serialize_partner_offer(
@@ -200,10 +205,12 @@ def _serialize_partner_offer(
     stats: dict | None = None,
     *,
     owned_business_ids: set[int] | None = None,
+    rejection_reason: str | None = None,
 ) -> dict:
     payload = offer_public_fields(offer)
     payload["partner_status"] = partner_status
     payload["is_own_offer"] = bool(owned_business_ids and is_own_offer(offer, owned_business_ids))
+    payload["rejection_reason"] = rejection_reason if partner_status == "rejected" else None
     if stats:
         payload.update(
             {
@@ -239,7 +246,13 @@ async def partner_my_offers(
     items = []
     for access, offer in result.all():
         stats = await offer_stats(db, offer.id, partner_id=profile.id)
-        item = _serialize_partner_offer(offer, access.status, stats, owned_business_ids=owned_business_ids)
+        item = _serialize_partner_offer(
+            offer,
+            access.status,
+            stats,
+            owned_business_ids=owned_business_ids,
+            rejection_reason=access.rejection_reason,
+        )
         items.append(item)
 
     promotions = await _partner_promotions(db, profile.id, [item["id"] for item in items])
@@ -278,7 +291,7 @@ async def partner_marketplace(
     if q:
         filters.append(Offer.name.ilike(f"%{q.strip()}%"))
     if category:
-        filters.append(Offer.category == category)
+        filters.append(offer_category_filter(category))
     if geo:
         filters.append(Offer.geo.ilike(f"%{geo.strip()}%"))
     if access_policy:
@@ -296,17 +309,19 @@ async def partner_marketplace(
                 OfferPartnerAccess.offer_id.in_([o.id for o in offers]),
             )
         )
-        access_map = {a.offer_id: a.status for a in access_result.scalars().all()}
+        access_map = {a.offer_id: a for a in access_result.scalars().all()}
 
     items = []
     for offer in offers:
         stats = await offer_stats(db, offer.id)
+        access = access_map.get(offer.id)
         items.append(
             _serialize_partner_offer(
                 offer,
-                access_map.get(offer.id),
+                access.status if access else None,
                 stats,
                 owned_business_ids=owned_business_ids,
+                rejection_reason=access.rejection_reason if access else None,
             )
         )
 
@@ -353,17 +368,11 @@ async def partner_offer_detail(
         access.status if access else None,
         stats,
         owned_business_ids=owned_business_ids,
+        rejection_reason=access.rejection_reason if access else None,
     )
     payload["my_stats"] = mine
-    payload["application"] = None
-    if access and not own:
-        payload["application"] = {
-            "status": access.status,
-            "comment": access.comment,
-            "traffic_sources": access.traffic_sources or [],
-            "topics": access.topics,
-            "geo": access.geo,
-        }
+    payload["application"] = serialize_partner_application(access) if access and not own else None
+    payload["rejection_reason"] = access.rejection_reason if access and access.status == "rejected" and not own else None
     user = (
         await db.execute(select(User).where(User.id == profile.user_id))
     ).scalar_one_or_none()
@@ -380,7 +389,7 @@ async def join_offer(
     offer_id: str,
     session_data: dict = Depends(require_partner_role),
     db: AsyncSession = Depends(get_db),
-    data: JoinOfferRequest = Body(default_factory=JoinOfferRequest),
+    _data: JoinOfferRequest = Body(default_factory=JoinOfferRequest),
 ):
     profile = await _get_partner_profile(session_data["user_id"], db)
     owned_business_ids = await user_owned_business_ids(db, session_data["user_id"])
@@ -393,7 +402,6 @@ async def join_offer(
     if offer.access_policy == "invite_only":
         raise ForbiddenError("This offer is available by invitation only")
 
-    payload = data
     existing = (
         await db.execute(
             select(OfferPartnerAccess).where(
@@ -404,31 +412,16 @@ async def join_offer(
     ).scalar_one_or_none()
     status = "approved" if offer.access_policy == "open" else "pending"
 
-    if existing:
-        if existing.status in {"approved", "pending"}:
-            raise ConflictError("Already requested access")
-        existing.status = status
-        existing.source = "marketplace"
-        existing.comment = payload.comment
-        existing.traffic_sources = payload.traffic_sources
-        existing.topics = payload.topics
-        existing.geo = payload.geo
-        if status == "approved":
-            from datetime import datetime, timezone
-            existing.approved_at = datetime.now(timezone.utc)
-    else:
-        db.add(
-            OfferPartnerAccess(
-                offer_id=offer.id,
-                partner_id=profile.id,
-                status=status,
-                source="marketplace",
-                comment=payload.comment,
-                traffic_sources=payload.traffic_sources,
-                topics=payload.topics,
-                geo=payload.geo,
-            )
-        )
+    if existing and existing.status in ACTIVE_ACCESS_STATUSES:
+        raise ConflictError("Already requested access")
+    access = apply_partner_offer_request(
+        existing,
+        offer_id=offer.id,
+        partner_id=profile.id,
+        status=status,
+    )
+    if existing is None:
+        db.add(access)
 
     existing_bp = await db.execute(
         select(BusinessPartner).where(

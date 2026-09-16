@@ -1,3 +1,5 @@
+import { VERTICALS } from '@/shared/catalog/categories';
+import { TRAFFIC_SOURCES, trafficSourceLabel } from '@/shared/catalog/trafficSources';
 import { cn } from '@/shared/utils/cn';
 
 export const OFFER_STATUSES = [
@@ -17,21 +19,21 @@ export const STATUS_LABELS: Record<string, { label: string; className: string }>
 };
 
 export const ACCESS_OPTIONS = [
-  { value: 'open', label: 'Публичный' },
-  { value: 'approval', label: 'По одобрению' },
-  { value: 'invite_only', label: 'Только по приглашению' },
+  { value: 'open', label: 'Всем партнёрам' },
+  { value: 'approval', label: 'После одобрения' },
+  { value: 'invite_only', label: 'По приглашению' },
 ] as const;
 
 export const ACCESS_LABELS: Record<string, string> = {
-  open: 'Публичный',
-  approval: 'По одобрению',
-  invite_only: 'Только по приглашению',
+  open: 'Всем партнёрам',
+  approval: 'После одобрения',
+  invite_only: 'По приглашению',
 };
 
 export const CONVERSION_OPTIONS = [
   { value: 'sale', label: 'Покупка' },
   { value: 'signup', label: 'Регистрация' },
-  { value: 'lead', label: 'Лид' },
+  { value: 'lead', label: 'Заявка' },
   { value: 'application', label: 'Одобренная заявка' },
   { value: 'custom', label: 'Другое' },
 ] as const;
@@ -40,17 +42,11 @@ export const CONVERSION_LABELS: Record<string, string> = Object.fromEntries(
   CONVERSION_OPTIONS.map((item) => [item.value, item.label]),
 );
 
-export const CATEGORIES = ['SaaS', 'Fintech', 'Education', 'E-commerce', 'Marketing', 'Other'] as const;
+export const CATEGORIES = VERTICALS.map((item) => item.nameRu);
 
-export const TRAFFIC_TYPES = [
-  { value: 'seo', label: 'SEO' },
-  { value: 'content', label: 'Контент' },
-  { value: 'social', label: 'Социальные сети' },
-  { value: 'youtube', label: 'YouTube / Video' },
-  { value: 'telegram', label: 'Telegram' },
-  { value: 'email', label: 'Email' },
-  { value: 'ppc', label: 'PPC' },
-] as const;
+export const CATEGORY_FILTERS = VERTICALS.map((item) => ({ value: item.code, label: item.nameRu }));
+
+export const TRAFFIC_TYPES = TRAFFIC_SOURCES.map((item) => ({ value: item.code, label: item.nameRu }));
 
 export const TRAFFIC_LABELS: Record<string, string> = Object.fromEntries(
   TRAFFIC_TYPES.map((item) => [item.value, item.label]),
@@ -61,7 +57,7 @@ export const ATTRIBUTION_MODEL_LABEL = 'Последний допустимый 
 export const ATTRIBUTION_MODEL_HINT =
   'Конверсия относится к последнему допустимому переходу партнёра в пределах окна атрибуции.';
 
-export const GEO_OPTIONS = ['WW', 'RU', 'KZ', 'BY', 'UA', 'US', 'EU'] as const;
+export const GEO_OPTIONS = ['RU', 'KZ', 'BY', 'UA', 'US'] as const;
 
 export function statusBadge(status?: string) {
   return STATUS_LABELS[status || 'draft'] || STATUS_LABELS.draft;
@@ -76,7 +72,7 @@ export function conversionLabel(value?: string | null) {
 }
 
 export function trafficLabel(value: string) {
-  return TRAFFIC_LABELS[value] || value;
+  return trafficSourceLabel(value) || TRAFFIC_LABELS[value] || value;
 }
 
 export function tabClass(active: boolean) {

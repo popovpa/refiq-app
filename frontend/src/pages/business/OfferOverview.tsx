@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import { formatMoney, formatNumber } from '@/shared/utils/format';
 import type { BusinessOfferDetailData } from './offerDetailTypes';
+import { partnerDisplayName } from '@/shared/partners/displayName';
 
 type AttentionTarget = 'partners' | 'partners-pending' | 'promotion';
 
@@ -305,7 +306,7 @@ export function OfferOverview({
                   <tr
                     key={row.id}
                     tabIndex={0}
-                    aria-label={`${row.name}, ${formatNumber(row.conversions)} конверсий, CR ${formatPct(row.cr)}, продажи ${formatMoney(row.revenue)}`}
+                    aria-label={`${partnerDisplayName(row.name, row.partner_id)}, ${formatNumber(row.conversions)} конверсий, CR ${formatPct(row.cr)}, продажи ${formatMoney(row.revenue)}`}
                     className="cursor-pointer rounded-sm hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                     onClick={() => onOpenPartners('approved')}
                     onKeyDown={(event) => {
@@ -315,7 +316,7 @@ export function OfferOverview({
                       }
                     }}
                   >
-                    <td className="h-8 font-medium max-w-[140px] truncate">{row.name}</td>
+                    <td className="h-8 font-medium max-w-[140px] truncate">{partnerDisplayName(row.name, row.partner_id)}</td>
                     <td className="h-8 text-right tabular-nums">{formatNumber(row.conversions)}</td>
                     <td className="h-8 text-right tabular-nums text-muted-foreground hidden sm:table-cell">
                       {formatPct(row.cr)}
