@@ -33,3 +33,6 @@ docker-compose.override.yml
 
 # Generated assets (local object storage)
 data/assets/
+
+# Local audit notes (do not commit)
+LEGAL_AUDIT.md
