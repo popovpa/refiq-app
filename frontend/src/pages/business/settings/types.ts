@@ -1,4 +1,4 @@
-export type SettingsTab = 'company' | 'sites' | 'integrations' | 'defaults';
+export type SettingsTab = 'company' | 'legal' | 'sites' | 'integrations' | 'defaults';
 export type IntegrationKind = 'postback' | 'sdk';
 
 export interface BusinessWorkspaceSettings {

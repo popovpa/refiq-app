@@ -11,6 +11,7 @@ import {
   Wallet,
   Banknote,
   ScrollText,
+  Scale,
   LayoutDashboard,
 } from 'lucide-react';
 import { cn } from '@/components/ui';
@@ -54,6 +55,7 @@ const NAV: {
     items: [
       { to: '/commissions', label: 'Комиссии', icon: Wallet },
       { to: '/payouts', label: 'Выплаты', icon: Banknote },
+      { to: '/legal-entities', label: 'Юридические данные', icon: Scale },
     ],
   },
   {

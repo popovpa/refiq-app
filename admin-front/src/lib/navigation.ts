@@ -48,6 +48,7 @@ export function entityHref(type: string, id: string | number | null | undefined)
     conversion: `/conversions/${id}`,
     commission: `/commissions/${id}`,
     payout: `/payouts/${id}`,
+    legal_entity: `/legal-entities/${id}`,
     click: typeof id === 'string' && id.length === 12 ? tracePath(id) : `/clicks/${id}`,
     postback: '/postbacks',
   };

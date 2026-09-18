@@ -1,4 +1,4 @@
-import { LayoutDashboard, Tag, Users, ArrowLeftRight, Wallet, Settings, Link2 } from 'lucide-react';
+import { LayoutDashboard, Tag, Users, ArrowLeftRight, Wallet, Settings, Link2, CreditCard } from 'lucide-react';
 
 export type NavKey =
   | 'overview'
@@ -7,6 +7,7 @@ export type NavKey =
   | 'links'
   | 'conversions'
   | 'payouts'
+  | 'billing'
   | 'settings';
 
 export type NavItem = {
@@ -23,6 +24,7 @@ export const businessNav: NavItem[] = [
   { key: 'partners', path: '/business/partners', icon: Users, labels: { ru: 'Партнёры', en: 'Partners' } },
   { key: 'conversions', path: '/business/conversions', icon: ArrowLeftRight, labels: { ru: 'Конверсии', en: 'Conversions' } },
   { key: 'payouts', path: '/business/payouts', icon: Wallet, labels: { ru: 'Выплаты', en: 'Payouts' } },
+  { key: 'billing', path: '/business/billing', icon: CreditCard, labels: { ru: 'Тариф', en: 'Billing' } },
   { key: 'settings', path: '/business/settings', icon: Settings, labels: { ru: 'Настройки', en: 'Settings' } },
 ];
 

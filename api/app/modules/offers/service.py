@@ -319,6 +319,7 @@ async def apply_commission_update(
     if commission_currency is not None:
         rule.currency = commission_currency
         offer.currency = commission_currency
+    offer.terms_version = int(offer.terms_version or 1) + 1
 
 
 async def ensure_business_partner(db: AsyncSession, business_id: int, partner_id: int, status: str) -> None:
@@ -398,6 +399,7 @@ def apply_partner_offer_request(
     offer_id: int,
     partner_id: int,
     status: str,
+    offer_terms_version: int | None = None,
 ) -> OfferPartnerAccess:
     now = datetime.now(timezone.utc)
     if access is None:
@@ -412,6 +414,8 @@ def apply_partner_offer_request(
             topics=None,
             geo=None,
             rejection_reason=None,
+            offer_terms_version=offer_terms_version,
+            terms_accepted_at=now,
             approved_at=now if status == "approved" else None,
         )
     access.status = status
@@ -423,5 +427,7 @@ def apply_partner_offer_request(
     access.geo = None
     access.rejection_reason = None
     access.created_at = now
+    access.offer_terms_version = offer_terms_version
+    access.terms_accepted_at = now
     access.approved_at = now if status == "approved" else None
     return access

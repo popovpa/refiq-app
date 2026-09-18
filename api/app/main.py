@@ -15,9 +15,11 @@ logger = structlog.get_logger()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.modules.ai.jobs import has_test_job_runner
+    from app.modules.finance.jobs import run_financial_jobs
 
     stop = asyncio.Event()
     task = None
+    finance_task = None
     if not has_test_job_runner():
         async def _promo_loop():
             from app.modules.ai.application.creative.promo_worker import pump_queued_runs
@@ -32,15 +34,28 @@ async def lifespan(app: FastAPI):
                 except asyncio.TimeoutError:
                     pass
 
+        async def _finance_loop():
+            while not stop.is_set():
+                try:
+                    await run_financial_jobs()
+                except Exception:
+                    logger.exception("financial_jobs_failed")
+                try:
+                    await asyncio.wait_for(stop.wait(), timeout=60)
+                except asyncio.TimeoutError:
+                    pass
+
         task = asyncio.create_task(_promo_loop())
+        finance_task = asyncio.create_task(_finance_loop())
     yield
     stop.set()
-    if task:
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
+    for item in (task, finance_task):
+        if item:
+            item.cancel()
+            try:
+                await item
+            except asyncio.CancelledError:
+                pass
     await engine.dispose()
 
 
@@ -86,6 +101,13 @@ from app.modules.ai.router import router as ai_router
 from app.modules.creatives.business_router import router as business_creatives_router
 from app.modules.creatives.partner_router import router as partner_creatives_router
 from app.modules.notifications.router import router as notifications_router
+from app.modules.finance.business_router import router as finance_business_router
+from app.modules.finance.partner_router import router as finance_partner_router
+from app.modules.finance.webhooks import router as finance_webhook_router
+from app.modules.finance.test_router import router as finance_test_router
+from app.modules.finance.providers.factory import validate_live_startup
+
+validate_live_startup()
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users_router, prefix="/api/v1/me", tags=["users"])
@@ -109,6 +131,11 @@ app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(business_creatives_router, prefix="/api/v1/business/offers", tags=["creatives"])
 app.include_router(partner_creatives_router, prefix="/api/v1/partner", tags=["creatives"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
+app.include_router(finance_business_router, prefix="/api/v1/business", tags=["finance"])
+app.include_router(finance_partner_router, prefix="/api/v1/partner", tags=["finance"])
+app.include_router(finance_webhook_router, prefix="/api/v1/finance", tags=["finance"])
+if not settings.is_production:
+    app.include_router(finance_test_router, prefix="/api/v1/finance/test", tags=["finance-test"])
 
 
 @app.get("/health")

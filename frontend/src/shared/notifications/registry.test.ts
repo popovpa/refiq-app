@@ -21,8 +21,8 @@ function item(overrides: Partial<AppNotification> = {}): AppNotification {
 describe('notification registry', () => {
   it('resolves destination from registry without UI type switches', () => {
     expect(notificationDestination(item())).toBe('/business/settings?tab=sites&site=42');
-    expect(notificationDestination(item({ type: 'POSTBACK_FAILED', metadata: {} }))).toBe(
-      '/business/settings?tab=integrations&integration=postback',
+    expect(notificationDestination(item({ type: 'PAYOUT_OVERDUE', metadata: {} }))).toBe(
+      '/business/payouts',
     );
   });
 

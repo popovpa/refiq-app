@@ -352,6 +352,9 @@ async def add_business_role(
         if not user.phone:
             user.phone = data.phone.strip()
         await db.flush()
+        from app.modules.finance.bootstrap import ensure_business_legal_entity
+
+        await ensure_business_legal_entity(db, business)
         await db.refresh(user, ["roles"])
 
     session_data = await _activate_workspace(request, db, user_id, "business", had_roles)
@@ -388,6 +391,10 @@ async def add_partner_role(
                 )
             )
         await db.flush()
+        from app.modules.finance.bootstrap import ensure_partner_legal_entity
+
+        profile = (await db.execute(select(PartnerProfile).where(PartnerProfile.user_id == user.id))).scalar_one()
+        await ensure_partner_legal_entity(db, profile)
         await db.refresh(user, ["roles"])
 
     session_data = await _activate_workspace(request, db, user_id, "partner", had_roles)

@@ -101,5 +101,7 @@ def test_registry_covers_required_types():
         assert dest
         if "POSTBACK" in value:
             assert "integrations" in dest
+        elif "PAYOUT" in value or value == NotificationType.PARTNER_TRAFFIC_SUSPENDED:
+            assert "payouts" in dest
         else:
             assert "sites" in dest

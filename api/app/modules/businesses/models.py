@@ -12,6 +12,7 @@ class Business(Base):
     id: Mapped[int] = pk_column()
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     legal_name: Mapped[str | None] = mapped_column(String(255))
+    legal_entity_id: Mapped[int | None] = fk_column("legal_entities.id", nullable=True)
     country: Mapped[str | None] = mapped_column(String(3))
     currency: Mapped[str] = mapped_column(String(3), default="RUB")
     status: Mapped[str] = mapped_column(String(20), default="active")

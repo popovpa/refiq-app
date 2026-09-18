@@ -11,6 +11,7 @@ class PartnerProfile(Base):
 
     id: Mapped[int] = pk_column()
     user_id: Mapped[int] = fk_column("users.id", unique=True)
+    legal_entity_id: Mapped[int | None] = fk_column("legal_entities.id", nullable=True)
     display_name: Mapped[str | None] = mapped_column(String(255))
     description: Mapped[str | None] = mapped_column(String(1000))
     status: Mapped[str] = mapped_column(String(20), default="active")

@@ -53,6 +53,17 @@ async def redirect_tracking_link(
     offer = (await db.execute(select(Offer).where(Offer.id == link.offer_id))).scalar_one_or_none()
     if not offer or offer.status != "active":
         raise NotFoundError("Link")
+    if link.partner_id:
+        from app.modules.finance.suspension import is_partner_traffic_suspended
+
+        if await is_partner_traffic_suspended(db, offer.business_id):
+            from app.modules.finance.errors import fin_error
+
+            raise fin_error(
+                "FIN_PARTNER_TRAFFIC_SUSPENDED",
+                "Partner promotion for this offer is temporarily unavailable",
+                403,
+            )
 
     rqcid = None
     for _ in range(8):

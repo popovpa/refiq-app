@@ -24,7 +24,6 @@ from app.modules.offers.service import (
     serialize_partner_application,
 )
 from app.modules.commissions.models import Commission
-from app.modules.payouts.models import Payout
 from app.modules.users.models import User
 from app.modules.promotion.ownership import (
     OWN_OFFER_MARKETPLACE_STATUSES,
@@ -170,7 +169,7 @@ async def partner_dashboard(
     earnings = await db.scalar(
         select(func.coalesce(func.sum(Commission.amount), 0)).where(
             Commission.partner_id == profile.id,
-            Commission.status.in_(["approved", "payable", "paid"]),
+            Commission.status.in_(["hold", "approved", "available", "payable", "payout_pending", "paid"]),
             Commission.created_at >= date_range.start,
             Commission.created_at <= date_range.end,
         )
@@ -178,7 +177,7 @@ async def partner_dashboard(
     pending_payout = await db.scalar(
         select(func.coalesce(func.sum(Commission.amount), 0)).where(
             Commission.partner_id == profile.id,
-            Commission.status.in_(["approved", "payable"]),
+            Commission.status.in_(["hold", "approved", "available", "payable"]),
         )
     )
 
@@ -392,13 +391,16 @@ async def join_offer(
     _data: JoinOfferRequest = Body(default_factory=JoinOfferRequest),
 ):
     profile = await _get_partner_profile(session_data["user_id"], db)
-    owned_business_ids = await user_owned_business_ids(db, session_data["user_id"])
     offer = (
         await db.execute(select(Offer).where(Offer.id == parse_id(offer_id), Offer.status == "active"))
     ).scalar_one_or_none()
     if not offer:
         raise NotFoundError("Offer")
-    assert_not_own_offer_for_partner_flow(offer, owned_business_ids)
+    from app.modules.finance.self_deal import assert_not_self_deal
+    from app.modules.finance.suspension import assert_partner_promotion_allowed
+
+    await assert_not_self_deal(db, offer=offer, partner_id=profile.id, user_id=session_data["user_id"])
+    await assert_partner_promotion_allowed(db, offer.business_id)
     if offer.access_policy == "invite_only":
         raise ForbiddenError("This offer is available by invitation only")
 
@@ -419,6 +421,7 @@ async def join_offer(
         offer_id=offer.id,
         partner_id=profile.id,
         status=status,
+        offer_terms_version=int(offer.terms_version or 1),
     )
     if existing is None:
         db.add(access)
@@ -512,56 +515,34 @@ async def list_partner_conversions(
     return {"items": items, "total": total or 0, "page": page, "per_page": per_page}
 
 
-@router.get("/payouts")
-async def list_partner_payouts(
-    session_data: dict = Depends(require_partner_role),
-    db: AsyncSession = Depends(get_db),
-):
-    user_id = session_data["user_id"]
-    profile = await _get_partner_profile(user_id, db)
-
-    available = await db.scalar(
-        select(func.coalesce(func.sum(Commission.amount), 0)).where(
-            Commission.partner_id == profile.id,
-            Commission.status.in_(["approved", "payable"]),
-        )
-    )
-
-    payouts_result = await db.execute(
-        select(Payout)
-        .where(Payout.partner_id == profile.id)
-        .order_by(Payout.created_at.desc())
-        .limit(50)
-    )
-    payouts = [
-        {
-            "id": p.id,
-            "amount": float(p.amount),
-            "currency": p.currency,
-            "status": p.status,
-            "created_at": p.created_at.isoformat(),
-            "paid_at": p.paid_at.isoformat() if p.paid_at else None,
-        }
-        for p in payouts_result.scalars().all()
-    ]
-
-    return {
-        "available_amount": float(available or 0),
-        "payouts": payouts,
-    }
-
-
 @router.get("/settings")
 async def get_partner_settings(
     session_data: dict = Depends(require_partner_role),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.core.config import settings as app_settings
+    from app.modules.finance.bootstrap import ensure_partner_legal_entity, ensure_payout_profile
+    from app.modules.finance.eligibility import PartnerPayoutEligibilityService
+    from app.modules.finance.serialize import serialize_payout_profile
+    from app.modules.system.models import PartnerSettings
+
     user_id = session_data["user_id"]
     profile = await _get_partner_profile(user_id, db)
+    await ensure_partner_legal_entity(db, profile)
+    payout_profile = await ensure_payout_profile(db, profile)
+    extras = await db.scalar(select(PartnerSettings).where(PartnerSettings.partner_id == profile.id))
+    extra = dict(extras.settings or {}) if extras else {}
+    eligibility = await PartnerPayoutEligibilityService(db).check_payout_eligibility(profile.id)
     return {
         "id": profile.id,
         "display_name": profile.display_name,
         "description": profile.description,
+        "website": extra.get("website") or "",
+        "payout_method": payout_profile.payout_method,
+        "payout_details": "",
+        "min_payout": float(app_settings.PAYOUT_MIN_AMOUNT),
+        "payout_profile": serialize_payout_profile(payout_profile, owner=True),
+        "payout_eligibility": eligibility.as_dict(),
     }
 
 
@@ -571,10 +552,58 @@ async def update_partner_settings(
     session_data: dict = Depends(require_partner_role),
     db: AsyncSession = Depends(get_db),
 ):
+    from datetime import datetime, timezone
+
+    from app.common.enums import ProfileStatus
+    from app.core.config import settings as app_settings
+    from app.modules.finance.audit import record_audit
+    from app.modules.finance.bootstrap import ensure_partner_legal_entity, ensure_payout_profile
+    from app.modules.finance.serialize import payout_profile_status_from_details, serialize_payout_profile
+    from app.modules.system.models import PartnerSettings
+    from sqlalchemy.orm.attributes import flag_modified
+
     user_id = session_data["user_id"]
     profile = await _get_partner_profile(user_id, db)
+    await ensure_partner_legal_entity(db, profile)
     allowed = {"display_name", "description"}
     for key, value in data.items():
         if key in allowed:
             setattr(profile, key, value)
-    return {"status": "ok"}
+    if "website" in data:
+        row = await db.scalar(select(PartnerSettings).where(PartnerSettings.partner_id == profile.id))
+        current = dict(row.settings or {}) if row else {}
+        current["website"] = (data.get("website") or "").strip() or None
+        if row:
+            row.settings = current
+            flag_modified(row, "settings")
+        else:
+            db.add(PartnerSettings(partner_id=profile.id, settings=current))
+    payout_profile = await ensure_payout_profile(db, profile)
+    if "payout_method" in data and data["payout_method"]:
+        payout_profile.payout_method = str(data["payout_method"]).strip()
+    details = (data.get("payout_details") or "").strip()
+    if details:
+        payout_profile.bank_account = details[:32]
+    if any(key in data for key in ("payout_method", "payout_details", "bank_account", "bank_bik", "bank_name")):
+        if data.get("bank_account"):
+            payout_profile.bank_account = str(data["bank_account"]).strip()
+        if data.get("bank_bik"):
+            payout_profile.bank_bik = str(data["bank_bik"]).strip()
+        if data.get("bank_name"):
+            payout_profile.bank_name = str(data["bank_name"]).strip()
+        payout_profile.status = payout_profile_status_from_details(payout_profile)
+        if payout_profile.status == ProfileStatus.PENDING_VERIFICATION.value and not app_settings.live_financial_transactions_allowed:
+            payout_profile.status = ProfileStatus.VERIFIED.value
+            payout_profile.verified_at = datetime.now(timezone.utc)
+        await record_audit(
+            db,
+            action="payout_profile.updated",
+            entity_type="payout_profile",
+            entity_id=payout_profile.id,
+            actor_user_id=parse_id(user_id),
+            new_status=payout_profile.status,
+        )
+    return {
+        "status": "ok",
+        "payout_profile": serialize_payout_profile(payout_profile, owner=True),
+    }

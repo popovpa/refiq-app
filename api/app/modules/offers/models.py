@@ -29,6 +29,7 @@ class Offer(Base):
     forbidden_traffic: Mapped[list | None] = mapped_column(JSON)
     partner_notes: Mapped[str | None] = mapped_column(Text)
     materials: Mapped[list | None] = mapped_column(JSON)
+    terms_version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -64,6 +65,8 @@ class OfferPartnerAccess(Base):
     topics: Mapped[str | None] = mapped_column(String(255))
     geo: Mapped[str | None] = mapped_column(String(255))
     rejection_reason: Mapped[str | None] = mapped_column(Text)
+    offer_terms_version: Mapped[int | None] = mapped_column(Integer)
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

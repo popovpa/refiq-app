@@ -11,6 +11,10 @@ import { SitesTab } from './settings/SitesTab';
 import { DefaultsTab } from './settings/DefaultsTab';
 import { IntegrationDrawer } from './settings/IntegrationDrawer';
 import { IntegrationsTab } from './settings/IntegrationsTab';
+import { LegalEntityForm, type LegalEntityFormValue } from '@/shared/finance/LegalEntityForm';
+import { TestModeBanner } from '@/shared/finance/banners';
+import type { LegalEntityWriteValue } from '@/shared/finance/legalEntity';
+import { financeApiErrorText } from '@/shared/finance/messages';
 import type {
   BusinessWorkspaceSettings,
   CompanyForm,
@@ -21,6 +25,7 @@ import type {
 
 const TABS: Array<{ key: SettingsTab; label: string }> = [
   { key: 'company', label: 'Компания' },
+  { key: 'legal', label: 'Юридические данные' },
   { key: 'sites', label: 'Сайты' },
   { key: 'integrations', label: 'Интеграции' },
   { key: 'defaults', label: 'По умолчанию' },
@@ -33,7 +38,11 @@ export function BusinessSettings() {
   const initialTab = searchParams.get('tab');
   const initialIntegration = searchParams.get('integration');
   const [tab, setTab] = useState<SettingsTab>(
-    initialTab === 'sites' || initialTab === 'integrations' || initialTab === 'defaults' || initialTab === 'company'
+    initialTab === 'sites' ||
+      initialTab === 'integrations' ||
+      initialTab === 'defaults' ||
+      initialTab === 'company' ||
+      initialTab === 'legal'
       ? initialTab
       : 'company',
   );
@@ -44,6 +53,19 @@ export function BusinessSettings() {
   const { data, isLoading } = useQuery<BusinessWorkspaceSettings>({
     queryKey: ['business', 'settings'],
     queryFn: () => api.get('/business/settings'),
+  });
+  const { data: legal, isLoading: legalLoading } = useQuery<{ legal_entity: LegalEntityFormValue | null; financial_mode?: string }>({
+    queryKey: ['business', 'legal-entity'],
+    queryFn: () => api.get('/business/legal-entity'),
+  });
+
+  const updateLegal = useMutation({
+    mutationFn: (payload: LegalEntityWriteValue) => api.patch('/business/legal-entity', payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['business', 'legal-entity'] });
+      addToast('Юридические данные сохранены', 'success');
+    },
+    onError: (err) => addToast(financeApiErrorText(err, 'Не удалось сохранить юридические данные'), 'error'),
   });
 
   const updateSettings = useMutation({
@@ -96,7 +118,7 @@ export function BusinessSettings() {
     }
   };
 
-  if (isLoading || !data) {
+  if (isLoading || legalLoading || !data) {
     return (
       <div className="space-y-5 max-w-[1280px]">
         <h1 className="ui-page-title">Настройки</h1>
@@ -109,7 +131,7 @@ export function BusinessSettings() {
   return (
     <div className="space-y-5 max-w-[1280px]">
       <h1 className="ui-page-title">Настройки</h1>
-
+      {tab === 'legal' && <TestModeBanner visible={legal?.financial_mode === 'TEST'} />}
       <div
         className="flex gap-1 bg-muted rounded-md p-0.5 w-fit"
         role="tablist"
@@ -136,6 +158,13 @@ export function BusinessSettings() {
       <div role="tabpanel" id={`settings-panel-${tab}`} aria-labelledby={`settings-tab-${tab}`}>
         {tab === 'company' && (
           <CompanyTab data={data} pending={updateSettings.isPending} onSave={saveCompany} />
+        )}
+        {tab === 'legal' && (
+          <LegalEntityForm
+            value={legal?.legal_entity}
+            pending={updateLegal.isPending}
+            onSave={(payload) => updateLegal.mutate(payload)}
+          />
         )}
         {tab === 'sites' && <SitesTab />}
         {tab === 'integrations' && (

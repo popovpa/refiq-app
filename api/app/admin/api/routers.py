@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.permissions import AdminPermission, require_permission
-from app.admin.queries import catalog, overview as overview_q, search as search_q, traffic, trace as trace_q
-from app.admin.schemas import ActionReason
+from app.admin.queries import catalog, legal_entities as legal_entities_q, overview as overview_q, search as search_q, traffic, trace as trace_q
+from app.admin.schemas import ActionReason, LegalEntityRejectRequest, LegalEntityVerifyRequest
+from app.modules.finance.verification import LegalEntityVerificationService
 from app.admin.services.actions import AdminActionService
 from app.core.database import get_db
 from app.core.exceptions import AppError
@@ -297,6 +298,56 @@ async def list_payouts(
 @resources_router.get("/payouts/{payout_id}")
 async def get_payout(payout_id: str, _admin=Depends(finance), db: AsyncSession = Depends(get_db)):
     return await traffic.get_payout(db, parse_id(payout_id))
+
+
+@resources_router.get("/legal-entities")
+async def list_legal_entities(
+    status: str | None = None,
+    owner_type: str | None = None,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=100),
+    _admin=Depends(finance),
+    db: AsyncSession = Depends(get_db),
+):
+    return await legal_entities_q.list_legal_entities(
+        db, status=status, owner_type=owner_type, page=page, per_page=per_page
+    )
+
+
+@resources_router.get("/legal-entities/{legal_entity_id}")
+async def get_legal_entity(legal_entity_id: str, _admin=Depends(finance), db: AsyncSession = Depends(get_db)):
+    return await legal_entities_q.get_legal_entity(db, parse_id(legal_entity_id))
+
+
+@resources_router.post("/legal-entities/{legal_entity_id}/verify")
+async def verify_legal_entity(
+    legal_entity_id: str,
+    payload: LegalEntityVerifyRequest,
+    admin=Depends(finance),
+    db: AsyncSession = Depends(get_db),
+):
+    entity = await LegalEntityVerificationService(db).verify_manual(
+        parse_id(legal_entity_id),
+        actor_admin_id=admin.id,
+        comment=payload.comment,
+    )
+    return await legal_entities_q.get_legal_entity(db, entity.id)
+
+
+@resources_router.post("/legal-entities/{legal_entity_id}/reject")
+async def reject_legal_entity(
+    legal_entity_id: str,
+    payload: LegalEntityRejectRequest,
+    admin=Depends(finance),
+    db: AsyncSession = Depends(get_db),
+):
+    entity = await LegalEntityVerificationService(db).reject_manual(
+        parse_id(legal_entity_id),
+        actor_admin_id=admin.id,
+        reason_code=payload.reason_code.value,
+        comment=payload.comment,
+    )
+    return await legal_entities_q.get_legal_entity(db, entity.id)
 
 
 @audit_router.get("/audit")

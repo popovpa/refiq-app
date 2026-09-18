@@ -34,6 +34,23 @@ from app.admin.auth.models import AdminUser  # noqa
 from app.admin.audit.models import AdminAuditEvent  # noqa
 from app.modules.postback.attempt import PostbackAttempt  # noqa
 from app.modules.notifications.models import Notification  # noqa
+from app.modules.finance.models import (  # noqa
+    BillingInvoice,
+    BusinessBillingProfile,
+    FinancialAuditEvent,
+    FinancialEntry,
+    FinancialIdempotencyKey,
+    FinancialJobLock,
+    LegalEntity,
+    LegalEntityVerificationAttempt,
+    PartnerPayoutProfile,
+    PartnerTrafficSuspension,
+    Plan,
+    PlanVersion,
+    ProviderWebhookEvent,
+    TermsAcceptance,
+    TestFinancialOperation,
+)
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 
@@ -113,8 +130,13 @@ async def setup_db(tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "S3_SECRET_ACCESS_KEY", "")
     monkeypatch.setattr(app_settings, "YANDEX_POSTBOX_ACCESS_KEY_ID", "")
     monkeypatch.setattr(app_settings, "YANDEX_POSTBOX_SECRET_ACCESS_KEY", "")
+    monkeypatch.setattr(app_settings, "FINANCIAL_TRANSACTIONS_ENABLED", False)
     monkeypatch.setattr("app.core.database.async_session_factory", TestingSessionLocal)
     monkeypatch.setattr("app.modules.postback.service.async_session_factory", TestingSessionLocal)
+    monkeypatch.setattr("app.modules.finance.jobs.async_session_factory", TestingSessionLocal)
+    from app.modules.finance.providers.factory import reset_provider_overrides
+
+    reset_provider_overrides()
     set_asset_storage(None)
     set_email_provider(None)
     runner = DeferredJobRunner()

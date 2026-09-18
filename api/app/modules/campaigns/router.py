@@ -97,6 +97,11 @@ async def create_partner_campaign(
 ):
     profile = await _get_partner_profile(session_data["user_id"], db)
     offer = await _require_offer_access(data.offer_id, profile.id, db)
+    from app.modules.finance.self_deal import assert_not_self_deal
+    from app.modules.finance.suspension import assert_partner_promotion_allowed
+
+    await assert_not_self_deal(db, offer=offer, partner_id=profile.id, user_id=session_data["user_id"])
+    await assert_partner_promotion_allowed(db, offer.business_id)
     campaign = await create_campaign(
         db,
         offer=offer,

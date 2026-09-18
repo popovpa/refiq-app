@@ -191,6 +191,11 @@ async def create_link(
 
     owned_business_ids = await user_owned_business_ids(db, user_id)
     assert_not_own_offer_for_partner_flow(offer, owned_business_ids)
+    from app.modules.finance.self_deal import assert_not_self_deal
+    from app.modules.finance.suspension import assert_partner_promotion_allowed
+
+    await assert_not_self_deal(db, offer=offer, partner_id=profile.id, user_id=user_id)
+    await assert_partner_promotion_allowed(db, offer.business_id)
 
     access = (
         await db.execute(

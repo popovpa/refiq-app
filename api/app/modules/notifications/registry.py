@@ -17,6 +17,10 @@ def _postback_destination(_metadata: dict[str, Any]) -> str:
     return "/business/settings?tab=integrations&integration=postback"
 
 
+def _payout_destination(_metadata: dict[str, Any]) -> str:
+    return "/business/payouts"
+
+
 NOTIFICATION_TYPE_REGISTRY: dict[NotificationType, dict[str, Any]] = {
     NotificationType.SDK_CONNECTED: {
         "title": "SDK успешно подключён",
@@ -47,6 +51,26 @@ NOTIFICATION_TYPE_REGISTRY: dict[NotificationType, dict[str, Any]] = {
         "title": "Проверка сайта не пройдена",
         "severity": NotificationSeverity.CRITICAL,
         "destination": _site_destination,
+    },
+    NotificationType.PAYOUT_DUE: {
+        "title": "Подтвердите выплату партнёру",
+        "severity": NotificationSeverity.WARNING,
+        "destination": _payout_destination,
+    },
+    NotificationType.PAYOUT_REMINDER: {
+        "title": "Напоминание о выплате партнёру",
+        "severity": NotificationSeverity.WARNING,
+        "destination": _payout_destination,
+    },
+    NotificationType.PAYOUT_OVERDUE: {
+        "title": "Просрочена выплата партнёру",
+        "severity": NotificationSeverity.CRITICAL,
+        "destination": _payout_destination,
+    },
+    NotificationType.PARTNER_TRAFFIC_SUSPENDED: {
+        "title": "Партнёрский трафик приостановлен",
+        "severity": NotificationSeverity.CRITICAL,
+        "destination": _payout_destination,
     },
 }
 

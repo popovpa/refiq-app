@@ -50,6 +50,26 @@ export const notificationTypeRegistry: Record<string, NotificationTypeConfig> = 
       item.destination ||
       (item.metadata.site_id ? `/business/settings?tab=sites&site=${item.metadata.site_id}` : '/business/settings?tab=sites'),
   },
+  PAYOUT_DUE: {
+    fallbackTitle: 'Подтвердите выплату партнёру',
+    fallbackSeverity: 'WARNING',
+    destination: (item) => item.destination || '/business/payouts',
+  },
+  PAYOUT_REMINDER: {
+    fallbackTitle: 'Напоминание о выплате партнёру',
+    fallbackSeverity: 'WARNING',
+    destination: (item) => item.destination || '/business/payouts',
+  },
+  PAYOUT_OVERDUE: {
+    fallbackTitle: 'Просрочена выплата партнёру',
+    fallbackSeverity: 'CRITICAL',
+    destination: (item) => item.destination || '/business/payouts',
+  },
+  PARTNER_TRAFFIC_SUSPENDED: {
+    fallbackTitle: 'Партнёрский трафик приостановлен',
+    fallbackSeverity: 'CRITICAL',
+    destination: (item) => item.destination || '/business/payouts',
+  },
 };
 
 export function notificationConfig(type: string): NotificationTypeConfig {

@@ -2,9 +2,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.common.enums import LegalVerificationRejectReason
+
 
 class ActionReason(BaseModel):
     reason: str = Field(min_length=1, max_length=500)
+
+
+class LegalEntityVerifyRequest(BaseModel):
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class LegalEntityRejectRequest(BaseModel):
+    reason_code: LegalVerificationRejectReason
+    comment: str | None = Field(default=None, max_length=2000)
 
 
 class AdminLoginRequest(BaseModel):

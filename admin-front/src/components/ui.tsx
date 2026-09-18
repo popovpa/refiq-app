@@ -74,9 +74,9 @@ export function EmptyState({
 export function StatusBadge({ status }: { status?: string | null }) {
   const value = (status || 'unknown').toLowerCase();
   const tone =
-    ['active', 'approved', 'accepted', 'paid', 'healthy', 'ok', 'success', 'attributed', 'calculated', 'connected'].includes(value)
+    ['active', 'approved', 'accepted', 'paid', 'healthy', 'ok', 'success', 'attributed', 'calculated', 'connected', 'verified'].includes(value)
       ? 'bg-success/10 text-success'
-      : ['paused', 'pending', 'waiting_approval', 'degraded', 'no_activity', 'awaiting_first_request', 'processing', 'duplicate'].includes(value)
+      : ['paused', 'pending', 'pending_verification', 'waiting_approval', 'degraded', 'no_activity', 'awaiting_first_request', 'processing', 'duplicate', 'review_required', 'draft'].includes(value)
         ? 'bg-warning/10 text-warning'
         : ['suspended', 'blocked', 'rejected', 'error', 'failed', 'cancelled', 'inactive', 'disabled', 'not_connected'].includes(value)
           ? 'bg-destructive/10 text-destructive'

@@ -21,6 +21,7 @@ import {
   PayoutDetailPage,
   PayoutsPage,
 } from '@/pages/FinancePages';
+import { LegalEntitiesPage, LegalEntityDetailPage } from '@/pages/LegalEntitiesPages';
 import { TracePage } from '@/pages/TracePage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 
@@ -51,6 +52,8 @@ export default function App() {
             <Route path="/commissions/:id" element={<CommissionDetailPage />} />
             <Route path="/payouts" element={<PayoutsPage />} />
             <Route path="/payouts/:id" element={<PayoutDetailPage />} />
+            <Route path="/legal-entities" element={<LegalEntitiesPage />} />
+            <Route path="/legal-entities/:id" element={<LegalEntityDetailPage />} />
             <Route path="/audit" element={<AuditPage />} />
             <Route path="/trace/:rqcid" element={<TracePage />} />
             <Route path="/admin/trace/:rqcid" element={<TracePage />} />

@@ -357,17 +357,13 @@ async def approve_conversion(
     conversion.available_at = conversion.approved_at + timedelta(days=snapshot)
 
     if conversion.partner_id is not None:
-        from app.modules.commissions.models import Commission
-        commission = Commission(
-            conversion_id=conversion.id,
-            business_id=business_id,
-            partner_id=conversion.partner_id,
-            amount=conversion.commission_amount,
-            currency=conversion.currency,
-            status="approved",
-            available_at=conversion.available_at,
+        from app.modules.finance.commission import create_commission_for_approved_conversion
+
+        await create_commission_for_approved_conversion(
+            db,
+            conversion,
+            actor_user_id=parse_id(session_data["user_id"]),
         )
-        db.add(commission)
 
     return {"status": "ok"}
 
@@ -390,29 +386,6 @@ async def reject_conversion(
         raise NotFoundError("Conversion")
     conversion.status = "rejected"
     return {"status": "ok"}
-
-
-@router.get("/payouts")
-async def list_business_payouts(
-    session_data: dict = Depends(require_business_role),
-    db: AsyncSession = Depends(get_db),
-):
-    from app.modules.commissions.models import Commission
-    business_id = parse_id(session_data["active_business_id"])
-
-    payable = await db.scalar(
-        select(func.coalesce(func.sum(Commission.amount), 0)).where(
-            Commission.business_id == business_id,
-            Commission.status == "approved",
-        )
-    )
-
-    return {
-        "payable_amount": float(payable or 0),
-        "pending": [],
-        "processing": [],
-        "paid": [],
-    }
 
 
 VALID_ACCESS_POLICIES = {"open", "approval", "invite_only"}

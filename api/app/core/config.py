@@ -71,6 +71,23 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY_ID: str = ""
     S3_SECRET_ACCESS_KEY: str = ""
 
+    FINANCIAL_TRANSACTIONS_ENABLED: bool = False
+    FINANCIAL_PROVIDER: str = "TBANK"
+    PAYOUT_MIN_AMOUNT: str = "500.00"
+    PAYOUT_INTERVAL_DAYS: int = 14
+    PAYOUT_DUE_DAYS: int = 3
+    SUBSCRIPTION_TRIAL_DAYS: int = 14
+    SUBSCRIPTION_GRACE_DAYS: int = 30
+    PLAN_PRO_AMOUNT: str = "4990.00"
+    PAYOUT_REMINDERS_PER_DAY: int = 2
+    TBANK_TERMINAL_KEY: str = ""
+    TBANK_PASSWORD: str = ""
+    TBANK_E2C_TERMINAL_KEY: str = ""
+    TBANK_E2C_PASSWORD: str = ""
+    TBANK_ACQUIRING_BASE_URL: str = "https://securepay.tinkoff.ru/v2"
+    TBANK_E2C_BASE_URL: str = "https://securepay.tinkoff.ru/e2c/v2"
+    TBANK_NOTIFICATION_URL: str = ""
+
     @property
     def s3_enabled(self) -> bool:
         return bool(self.S3_ACCESS_KEY_ID and self.S3_SECRET_ACCESS_KEY)
@@ -94,6 +111,33 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.APP_ENV == "production"
+
+    @property
+    def tbank_payment_credentials_configured(self) -> bool:
+        return bool(self.TBANK_TERMINAL_KEY and self.TBANK_PASSWORD)
+
+    @property
+    def tbank_payout_credentials_configured(self) -> bool:
+        key = self.TBANK_E2C_TERMINAL_KEY or self.TBANK_TERMINAL_KEY
+        password = self.TBANK_E2C_PASSWORD or self.TBANK_PASSWORD
+        return bool(key and password)
+
+    @property
+    def financial_provider_is_tbank(self) -> bool:
+        return (self.FINANCIAL_PROVIDER or "TBANK").upper() == "TBANK"
+
+    @property
+    def live_financial_transactions_allowed(self) -> bool:
+        return (
+            self.FINANCIAL_TRANSACTIONS_ENABLED
+            and self.financial_provider_is_tbank
+            and self.tbank_payment_credentials_configured
+            and self.tbank_payout_credentials_configured
+        )
+
+    @property
+    def financial_mode_label(self) -> str:
+        return "LIVE" if self.live_financial_transactions_allowed else "TEST"
 
 
 settings = Settings()

@@ -33,6 +33,23 @@ from app.admin.auth.models import AdminUser
 from app.admin.audit.models import AdminAuditEvent
 from app.modules.postback.attempt import PostbackAttempt
 from app.modules.notifications.models import Notification
+from app.modules.finance.models import (
+    BillingInvoice,
+    BusinessBillingProfile,
+    FinancialAuditEvent,
+    FinancialEntry,
+    FinancialIdempotencyKey,
+    FinancialJobLock,
+    LegalEntity,
+    LegalEntityVerificationAttempt,
+    PartnerPayoutProfile,
+    PartnerTrafficSuspension,
+    Plan,
+    PlanVersion,
+    ProviderWebhookEvent,
+    TermsAcceptance,
+    TestFinancialOperation,
+)
 
 config = context.config
 

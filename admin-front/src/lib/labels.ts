@@ -32,6 +32,9 @@ export const STATUS_LABELS: Record<string, string> = {
   attributed: 'Атрибутирована',
   calculated: 'Рассчитана',
   waiting_approval: 'Ожидает одобрения',
+  pending_verification: 'На проверке',
+  verified: 'Подтверждено',
+  review_required: 'Требуется проверка',
   unknown: 'Неизвестно',
 };
 
@@ -41,6 +44,12 @@ export function statusLabel(status?: string | null): string {
   const raw = String(status);
   if (raw === 'ACTIVE') return 'Активна';
   if (raw === 'DISABLED') return 'Отключена';
+  if (raw === 'PENDING_VERIFICATION') return 'На проверке';
+  if (raw === 'VERIFIED') return 'Подтверждено';
+  if (raw === 'REVIEW_REQUIRED') return 'Требуется проверка';
+  if (raw === 'REJECTED') return 'Отклонено';
+  if (raw === 'BLOCKED') return 'Заблокировано';
+  if (raw === 'DRAFT') return 'Черновик';
   const key = raw.toLowerCase();
   return STATUS_LABELS[key] || raw;
 }
@@ -89,6 +98,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   conversion: 'Конверсия',
   commission: 'Комиссия',
   payout: 'Выплата',
+  legal_entity: 'Юридические данные',
   postback: 'Postback',
   campaign: 'Кампания',
 };

@@ -127,21 +127,170 @@ class ConversionStatus(StrEnum):
     APPROVED = "approved"
     REJECTED = "rejected"
     PAID = "paid"
+    REVERSED = "reversed"
+
+
+class ConversionReversalReason(StrEnum):
+    ORDER_CANCELLED = "ORDER_CANCELLED"
+    DUPLICATE = "DUPLICATE"
+    FRAUD = "FRAUD"
+    INVALID_ATTRIBUTION = "INVALID_ATTRIBUTION"
+    TEST_CONVERSION = "TEST_CONVERSION"
+    BUSINESS_ERROR = "BUSINESS_ERROR"
+    OTHER = "OTHER"
 
 
 class CommissionStatus(StrEnum):
     PENDING = "pending"
-    APPROVED = "approved"
-    PAYABLE = "payable"
+    HOLD = "hold"
+    AVAILABLE = "available"
+    PAYOUT_PENDING = "payout_pending"
     PAID = "paid"
     CANCELLED = "cancelled"
+    REVERSED = "reversed"
+    # Legacy values kept for read compatibility during/after migration.
+    APPROVED = "approved"
+    PAYABLE = "payable"
 
 
 class PayoutStatus(StrEnum):
-    PENDING = "pending"
+    CREATED = "created"
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
     PROCESSING = "processing"
     PAID = "paid"
     FAILED = "failed"
+    CANCELLED = "cancelled"
+    OVERDUE = "overdue"
+    MANUAL_REVIEW = "manual_review"
+    RECONCILIATION_REQUIRED = "reconciliation_required"
+    # Legacy
+    PENDING = "pending"
+
+
+class SubscriptionStatus(StrEnum):
+    TRIAL = "trial"
+    ACTIVE = "active"
+    PAST_DUE = "past_due"
+    SUSPENDED = "suspended"
+    CANCELLED = "cancelled"
+
+
+class LegalSubjectType(StrEnum):
+    INDIVIDUAL = "INDIVIDUAL"
+    SOLE_PROPRIETOR = "SOLE_PROPRIETOR"
+    LEGAL_ENTITY = "LEGAL_ENTITY"
+
+
+class TaxStatus(StrEnum):
+    NPD = "NPD"
+    USN = "USN"
+    OSN = "OSN"
+    PATENT = "PATENT"
+    OTHER = "OTHER"
+    UNKNOWN = "UNKNOWN"
+
+
+class LegalVerificationStatus(StrEnum):
+    DRAFT = "DRAFT"
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"
+    VERIFIED = "VERIFIED"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+    REJECTED = "REJECTED"
+    BLOCKED = "BLOCKED"
+
+
+class LegalVerificationProviderType(StrEnum):
+    MANUAL = "MANUAL"
+    FNS = "FNS"
+    TBANK = "TBANK"
+
+
+class VerificationAttemptStatus(StrEnum):
+    PENDING = "PENDING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    REVIEW_REQUIRED = "REVIEW_REQUIRED"
+
+
+class LegalVerificationRejectReason(StrEnum):
+    INN_NOT_FOUND = "INN_NOT_FOUND"
+    ENTITY_INACTIVE = "ENTITY_INACTIVE"
+    DATA_MISMATCH = "DATA_MISMATCH"
+    UNSUPPORTED_ENTITY_TYPE = "UNSUPPORTED_ENTITY_TYPE"
+    INVALID_LEGAL_DATA = "INVALID_LEGAL_DATA"
+    OTHER = "OTHER"
+
+
+class ProfileStatus(StrEnum):
+    INCOMPLETE = "INCOMPLETE"
+    PENDING_VERIFICATION = "PENDING_VERIFICATION"
+    VERIFIED = "VERIFIED"
+    ACTIVE = "ACTIVE"
+    BLOCKED = "BLOCKED"
+
+
+class TermsContext(StrEnum):
+    BUSINESS = "BUSINESS"
+    PARTNER = "PARTNER"
+
+
+class FinancePermission(StrEnum):
+    FINANCE_VIEW = "FINANCE_VIEW"
+    BILLING_MANAGE = "BILLING_MANAGE"
+    PAYOUT_VIEW = "PAYOUT_VIEW"
+    PAYOUT_CONFIRM = "PAYOUT_CONFIRM"
+    LEGAL_ENTITY_MANAGE = "LEGAL_ENTITY_MANAGE"
+
+
+class PayoutFailureClass(StrEnum):
+    BUSINESS_NO_FUNDS = "BUSINESS_NO_FUNDS"
+    BUSINESS_NOT_CONFIRMED = "BUSINESS_NOT_CONFIRMED"
+    BUSINESS_PAYMENT_ACCOUNT_INVALID = "BUSINESS_PAYMENT_ACCOUNT_INVALID"
+    PARTNER_PAYMENT_DETAILS_INVALID = "PARTNER_PAYMENT_DETAILS_INVALID"
+    PARTNER_NOT_ELIGIBLE = "PARTNER_NOT_ELIGIBLE"
+    PARTNER_NPD_INVALID = "PARTNER_NPD_INVALID"
+    PROVIDER_ERROR = "PROVIDER_ERROR"
+    SYSTEM_ERROR = "SYSTEM_ERROR"
+    UNKNOWN = "UNKNOWN"
+
+
+class FinancialScope(StrEnum):
+    BUSINESS_BILLING = "BUSINESS_BILLING"
+    PARTNER_COMMISSION = "PARTNER_COMMISSION"
+    PAYOUT = "PAYOUT"
+
+
+class FinancialOperationType(StrEnum):
+    SUBSCRIPTION_CHARGE_CREATED = "SUBSCRIPTION_CHARGE_CREATED"
+    PAYMENT_CREATED = "PAYMENT_CREATED"
+    PAYMENT_PROCESSING = "PAYMENT_PROCESSING"
+    PAYMENT_SUCCEEDED = "PAYMENT_SUCCEEDED"
+    PAYMENT_FAILED = "PAYMENT_FAILED"
+    PAYMENT_CANCELLED = "PAYMENT_CANCELLED"
+    COMMISSION_CREATED = "COMMISSION_CREATED"
+    COMMISSION_APPROVED = "COMMISSION_APPROVED"
+    COMMISSION_REJECTED = "COMMISSION_REJECTED"
+    COMMISSION_HOLD_STARTED = "COMMISSION_HOLD_STARTED"
+    COMMISSION_AVAILABLE = "COMMISSION_AVAILABLE"
+    COMMISSION_REVERSED = "COMMISSION_REVERSED"
+    PAYOUT_CREATED = "PAYOUT_CREATED"
+    PAYOUT_CONFIRMED = "PAYOUT_CONFIRMED"
+    PAYOUT_PROCESSING = "PAYOUT_PROCESSING"
+    PAYOUT_PAID = "PAYOUT_PAID"
+    PAYOUT_FAILED = "PAYOUT_FAILED"
+    PAYOUT_OVERDUE = "PAYOUT_OVERDUE"
+
+
+class InvoiceStatus(StrEnum):
+    OPEN = "open"
+    PAID = "paid"
+    PAST_DUE = "past_due"
+    CANCELLED = "cancelled"
+    VOID = "void"
+
+
+class SupportedCurrency(StrEnum):
+    RUB = "RUB"
 
 
 class CreativeType(StrEnum):
