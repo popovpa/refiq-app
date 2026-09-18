@@ -57,6 +57,61 @@ def _digits(value: str | None, length: int, field: str) -> str | None:
     return text
 
 
+PARTNER_INDIVIDUAL_REQUIRES_NPD = "PARTNER_INDIVIDUAL_REQUIRES_NPD"
+PARTNER_TAX_STATUS_INVALID = "PARTNER_TAX_STATUS_INVALID"
+PARTNER_LEGAL_TYPE_NOT_SUPPORTED = "PARTNER_LEGAL_TYPE_NOT_SUPPORTED"
+
+PARTNER_SOLE_PROPRIETOR_TAX_STATUSES = {
+    TaxStatus.NPD.value,
+    TaxStatus.USN.value,
+    TaxStatus.OSN.value,
+    TaxStatus.PATENT.value,
+    TaxStatus.OTHER.value,
+}
+PARTNER_LEGAL_ENTITY_TAX_STATUSES = {
+    TaxStatus.USN.value,
+    TaxStatus.OSN.value,
+    TaxStatus.OTHER.value,
+}
+
+
+def validate_partner_legal_combination(
+    subject_type: str | None,
+    tax_status: str | None,
+    *,
+    submit: bool = False,
+) -> None:
+    """Reject Partner combinations that are not payout-eligible.
+
+    INDIVIDUAL is allowed only as самозанятый / НПД. Ordinary individuals
+    without NPD are not supported and are never auto-converted.
+    """
+    subject = (subject_type or "").upper()
+    tax = (tax_status or TaxStatus.UNKNOWN.value).upper()
+    if subject == LegalSubjectType.INDIVIDUAL.value:
+        if tax != TaxStatus.NPD.value:
+            raise fin_error(
+                PARTNER_INDIVIDUAL_REQUIRES_NPD,
+                "Для получения выплат физическое лицо должно иметь статус самозанятого / НПД.",
+            )
+        return
+    if subject == LegalSubjectType.SOLE_PROPRIETOR.value:
+        allowed = set(PARTNER_SOLE_PROPRIETOR_TAX_STATUSES)
+        if not submit:
+            allowed.add(TaxStatus.UNKNOWN.value)
+        if tax not in allowed:
+            raise fin_error(PARTNER_TAX_STATUS_INVALID, "Недопустимый налоговый статус для ИП")
+        return
+    if subject == LegalSubjectType.LEGAL_ENTITY.value:
+        allowed = set(PARTNER_LEGAL_ENTITY_TAX_STATUSES)
+        if not submit:
+            allowed.add(TaxStatus.UNKNOWN.value)
+        if tax not in allowed:
+            raise fin_error(PARTNER_TAX_STATUS_INVALID, "Недопустимый налоговый статус для юридического лица")
+        return
+    raise fin_error(PARTNER_LEGAL_TYPE_NOT_SUPPORTED, "Недопустимый тип партнёра для выплат")
+
+
 def validate_legal_entity_payload(data: dict, *, strict: bool = True) -> dict:
     subject = (data.get("subject_type") or LegalSubjectType.INDIVIDUAL.value).upper()
     tax = (data.get("tax_status") or TaxStatus.UNKNOWN.value).upper()
@@ -162,12 +217,16 @@ def serialize_legal_entity(entity: LegalEntity | None) -> dict | None:
         "last_name": entity.last_name,
         "middle_name": entity.middle_name,
         "inn": entity.inn,
+        "kpp": entity.kpp,
         "ogrn": entity.ogrn,
         "ogrnip": entity.ogrnip,
         "legal_address": entity.legal_address,
         "verification_status": entity.verification_status,
         "verification_reason": entity.verification_reason,
         "verification_reason_code": entity.verification_reason_code,
+        "lookup_provider": entity.lookup_provider,
+        "lookup_invalid": bool(entity.lookup_invalid),
+        "registry_status": entity.registry_status,
         "created_at": entity.created_at.isoformat() if entity.created_at else None,
         "updated_at": entity.updated_at.isoformat() if entity.updated_at else None,
         "verified_at": entity.verified_at.isoformat() if entity.verified_at else None,

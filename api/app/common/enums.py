@@ -205,6 +205,11 @@ class LegalVerificationProviderType(StrEnum):
     TBANK = "TBANK"
 
 
+class LegalEntityLookupProviderType(StrEnum):
+    DADATA = "dadata"
+    FAKE = "fake"
+
+
 class VerificationAttemptStatus(StrEnum):
     PENDING = "PENDING"
     SUCCESS = "SUCCESS"

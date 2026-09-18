@@ -106,6 +106,7 @@ from app.modules.finance.partner_router import router as finance_partner_router
 from app.modules.finance.webhooks import router as finance_webhook_router
 from app.modules.finance.test_router import router as finance_test_router
 from app.modules.finance.providers.factory import validate_live_startup
+from app.modules.finance.lookup.router import router as legal_entity_lookup_router
 
 validate_live_startup()
 
@@ -131,6 +132,7 @@ app.include_router(ai_router, prefix="/api/v1/ai", tags=["ai"])
 app.include_router(business_creatives_router, prefix="/api/v1/business/offers", tags=["creatives"])
 app.include_router(partner_creatives_router, prefix="/api/v1/partner", tags=["creatives"])
 app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
+app.include_router(legal_entity_lookup_router, prefix="/api/v1/legal-entity-lookup", tags=["finance"])
 app.include_router(finance_business_router, prefix="/api/v1/business", tags=["finance"])
 app.include_router(finance_partner_router, prefix="/api/v1/partner", tags=["finance"])
 app.include_router(finance_webhook_router, prefix="/api/v1/finance", tags=["finance"])

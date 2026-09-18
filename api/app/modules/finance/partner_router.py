@@ -17,7 +17,7 @@ from app.modules.finance.audit import record_audit
 from app.modules.finance.bootstrap import ensure_partner_legal_entity, ensure_payout_profile
 from app.modules.finance.commission import earnings_breakdown
 from app.modules.finance.eligibility import PartnerPayoutEligibilityService
-from app.modules.finance.legal import LegalEntityUpdate, serialize_legal_entity
+from app.modules.finance.legal import LegalEntityUpdate, serialize_legal_entity, validate_partner_legal_combination
 from app.modules.finance.models import LegalEntity
 from app.modules.finance.verification import LegalEntityVerificationService
 from app.modules.finance.money import as_money
@@ -85,6 +85,14 @@ async def patch_legal_entity(
         raise NotFoundError("LegalEntity")
     dumped = data.model_dump(exclude_unset=True)
     submit = bool(dumped.pop("submit", False))
+    current = await db.get(LegalEntity, partner.legal_entity_id)
+    if not current:
+        raise NotFoundError("LegalEntity")
+    validate_partner_legal_combination(
+        dumped.get("subject_type", current.subject_type),
+        dumped.get("tax_status", current.tax_status),
+        submit=submit,
+    )
     entity = await LegalEntityVerificationService(db).apply_user_update(
         partner.legal_entity_id,
         dumped,

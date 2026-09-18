@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     TBANK_E2C_BASE_URL: str = "https://securepay.tinkoff.ru/e2c/v2"
     TBANK_NOTIFICATION_URL: str = ""
 
+    LEGAL_ENTITY_LOOKUP_PROVIDER: str = "fake"
+    DADATA_API_KEY: str = ""
+    DADATA_HOST: str = "suggestions.dadata.ru"
+    DADATA_API_PREFIX: str = "/suggestions/api/4_1/rs"
+    LEGAL_ENTITY_LOOKUP_SEARCH_TIMEOUT_SECONDS: float = 2.5
+    LEGAL_ENTITY_LOOKUP_RESOLVE_TIMEOUT_SECONDS: float = 6.0
+
     @property
     def s3_enabled(self) -> bool:
         return bool(self.S3_ACCESS_KEY_ID and self.S3_SECRET_ACCESS_KEY)

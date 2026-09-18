@@ -55,8 +55,6 @@ class PartnerPayoutEligibilityService:
                     "UNSUPPORTED_PARTNER_TYPE",
                     "Ordinary individuals cannot receive payouts",
                 )
-            if entity.tax_status != TaxStatus.NPD.value:
-                return PayoutEligibility(False, "NPD_STATUS_INVALID", "NPD status is invalid")
         elif entity.subject_type not in {
             LegalSubjectType.SOLE_PROPRIETOR.value,
             LegalSubjectType.LEGAL_ENTITY.value,

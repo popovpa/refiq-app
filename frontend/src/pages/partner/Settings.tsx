@@ -159,9 +159,11 @@ export function PartnerSettings() {
         </form>
 
         <LegalEntityForm
+          context="partner"
           value={{ subject_type: 'INDIVIDUAL', ...(legal?.legal_entity || {}) }}
           pending={updateLegal.isPending}
           onSave={(payload) => updateLegal.mutate(payload)}
+          onLookupApplied={() => queryClient.invalidateQueries({ queryKey: ['partner', 'legal-entity'] })}
         />
       </div>
 

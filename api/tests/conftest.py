@@ -135,8 +135,12 @@ async def setup_db(tmp_path, monkeypatch):
     monkeypatch.setattr("app.modules.postback.service.async_session_factory", TestingSessionLocal)
     monkeypatch.setattr("app.modules.finance.jobs.async_session_factory", TestingSessionLocal)
     from app.modules.finance.providers.factory import reset_provider_overrides
+    from app.modules.finance.lookup.factory import reset_lookup_provider_override
 
     reset_provider_overrides()
+    reset_lookup_provider_override()
+    monkeypatch.setattr(app_settings, "LEGAL_ENTITY_LOOKUP_PROVIDER", "fake")
+    monkeypatch.setattr(app_settings, "DADATA_API_KEY", "")
     set_asset_storage(None)
     set_email_provider(None)
     runner = DeferredJobRunner()

@@ -161,9 +161,11 @@ export function BusinessSettings() {
         )}
         {tab === 'legal' && (
           <LegalEntityForm
+            context="business"
             value={legal?.legal_entity}
             pending={updateLegal.isPending}
             onSave={(payload) => updateLegal.mutate(payload)}
+            onLookupApplied={() => queryClient.invalidateQueries({ queryKey: ['business', 'legal-entity'] })}
           />
         )}
         {tab === 'sites' && <SitesTab />}

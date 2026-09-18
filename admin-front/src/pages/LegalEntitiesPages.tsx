@@ -181,6 +181,7 @@ export function LegalEntityDetailPage() {
               <Kv label="Тип субъекта">{data.subject_type}</Kv>
               <Kv label="Налоговый статус">{data.tax_status}</Kv>
               <Kv label="ИНН">{data.inn || '—'}</Kv>
+              <Kv label="КПП">{data.kpp || '—'}</Kv>
               <Kv label="ОГРН">{data.ogrn || '—'}</Kv>
               <Kv label="ОГРНИП">{data.ogrnip || '—'}</Kv>
               <Kv label="Наименование">{data.legal_name || '—'}</Kv>
@@ -188,6 +189,10 @@ export function LegalEntityDetailPage() {
               <Kv label="Адрес">{data.legal_address || '—'}</Kv>
               <Kv label="Статус"><StatusBadge status={data.verification_status} /></Kv>
               <Kv label="Источник">{data.verification_source || '—'}</Kv>
+              <Kv label="Справочник">{data.lookup_provider || '—'}</Kv>
+              {data.lookup_invalid ? (
+                <Kv label="Предупреждение">Справочник пометил запись как некорректную. Не подтверждать без ручной проверки.</Kv>
+              ) : null}
               <Kv label="Создано">{formatDateTime(data.created_at)}</Kv>
               <Kv label="Обновлено">{formatDateTime(data.updated_at)}</Kv>
             </div>

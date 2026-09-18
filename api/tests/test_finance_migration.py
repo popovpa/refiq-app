@@ -23,3 +23,13 @@ def test_migration_029_adds_verification_attempts():
     assert "downgrade" in source
     assert 'down_revision' in source
     assert "028" in source
+
+
+def test_migration_030_adds_lookup_metadata():
+    path = Path(__file__).resolve().parents[1] / "alembic/versions/030_legal_entity_lookup.py"
+    source = path.read_text()
+    assert "lookup_provider" in source
+    assert "kpp" in source
+    assert "upgrade" in source
+    assert "downgrade" in source
+    assert "029" in source
