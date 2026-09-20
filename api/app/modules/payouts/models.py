@@ -18,6 +18,7 @@ class Payout(Base):
 
     id: Mapped[int] = pk_column()
     partner_id: Mapped[int] = fk_column("partner_profiles.id")
+    payout_profile_id: Mapped[int | None] = fk_column("partner_payout_profiles.id", nullable=True)
     payer_business_id: Mapped[int | None] = fk_column("businesses.id", nullable=True)
     payer_legal_entity_id: Mapped[int | None] = fk_column("legal_entities.id", nullable=True)
     recipient_legal_entity_id: Mapped[int | None] = fk_column("legal_entities.id", nullable=True)
@@ -54,5 +55,6 @@ class PayoutItem(Base):
     payout_id: Mapped[int] = fk_column("payouts.id")
     commission_id: Mapped[int] = fk_column("commissions.id", index=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    excluded_reason: Mapped[str | None] = mapped_column(String(64))
 
     payout: Mapped["Payout"] = relationship(back_populates="items")

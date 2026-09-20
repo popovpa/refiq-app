@@ -31,5 +31,7 @@ class Commission(Base):
     active_payout_id: Mapped[int | None] = fk_column("payouts.id", nullable=True)
     available_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     reversed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reason_code: Mapped[str | None] = mapped_column(String(64))
+    reason: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

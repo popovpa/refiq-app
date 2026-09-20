@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info } from 'lucide-react';
 import { api } from '@/shared/api/client';
 import { Button } from '@/shared/components/Button';
@@ -10,6 +10,15 @@ import {
   lookupEnabledForSubject,
   registryIdLine,
 } from '@/shared/finance/lookup';
+import {
+  applyLookupCandidate,
+  cancelLegalEntityEdit,
+  initialLegalEntityEdit,
+  isLegalEntityEditDirty,
+  persistLookupRequest,
+  snapshotLegalEntityForm,
+  type LegalEntityFormValue,
+} from '@/shared/finance/legalEntityEdit';
 import { financeApiErrorText } from '@/shared/finance/messages';
 import {
   isUnsupportedPartnerIndividual,
@@ -23,45 +32,7 @@ import {
   verificationStatusLabel,
 } from '@/shared/finance/legalEntity';
 
-export interface LegalEntityFormValue {
-  id?: number;
-  subject_type: string;
-  tax_status: string;
-  country: string;
-  legal_name: string;
-  first_name: string;
-  last_name: string;
-  middle_name: string;
-  inn: string;
-  kpp?: string;
-  ogrn: string;
-  ogrnip: string;
-  legal_address: string;
-  verification_status?: string;
-  verification_reason?: string | null;
-  verification_reason_code?: string | null;
-  lookup_provider?: string | null;
-  lookup_invalid?: boolean;
-}
-
-const EMPTY: LegalEntityFormValue = {
-  subject_type: 'LEGAL_ENTITY',
-  tax_status: 'UNKNOWN',
-  country: 'RU',
-  legal_name: '',
-  first_name: '',
-  last_name: '',
-  middle_name: '',
-  inn: '',
-  kpp: '',
-  ogrn: '',
-  ogrnip: '',
-  legal_address: '',
-};
-
-function hasIdentity(value?: Partial<LegalEntityFormValue> | null) {
-  return Boolean(value?.inn && (value.legal_name || value.last_name));
-}
+export type { LegalEntityFormValue } from '@/shared/finance/legalEntityEdit';
 
 export function LegalEntityForm({
   value,
@@ -78,33 +49,52 @@ export function LegalEntityForm({
   context: LookupContext;
   onLookupApplied?: () => void;
 }) {
-  const [form, setForm] = useState<LegalEntityFormValue>({ ...EMPTY, ...value });
-  const [manual, setManual] = useState(false);
-  const [selected, setSelected] = useState(hasIdentity(value));
+  const [edit, setEdit] = useState(() => initialLegalEntityEdit(value));
   const [lookupPending, setLookupPending] = useState(false);
   const [lookupError, setLookupError] = useState('');
   const [formError, setFormError] = useState('');
+  const form = edit.form;
+  const selected = edit.selected;
+  const manual = edit.manual;
+  const dirty = isLegalEntityEditDirty(edit, value);
+  const pendingCandidateRef = useRef(edit.pendingCandidateId);
+  pendingCandidateRef.current = edit.pendingCandidateId;
+  const savedKey = [value?.id, value?.inn, value?.legal_name, value?.tax_status, value?.verification_status].join(':');
 
   useEffect(() => {
-    setForm({ ...EMPTY, ...value });
-    if (hasIdentity(value)) setSelected(true);
-  }, [value]);
+    if (pendingCandidateRef.current) return;
+    setEdit(initialLegalEntityEdit(value));
+    setLookupError('');
+    setFormError('');
+  }, [savedKey]);
 
   const set = (key: keyof LegalEntityFormValue, next: string) => {
-    setForm((current) => ({ ...current, [key]: next }));
+    setEdit((current) => ({ ...current, form: { ...current.form, [key]: next } }));
     setFormError('');
   };
   const changeSubjectType = (nextType: string) => {
     if (!nextType) return;
     const nextTax = nextTaxStatusOnSubjectChange(context, nextType, form.tax_status);
-    setForm((current) => ({ ...current, subject_type: nextType, tax_status: nextTax }));
+    setEdit((current) => ({
+      ...current,
+      selected: lookupEnabledForSubject(context, nextType) ? false : current.selected,
+      manual: lookupEnabledForSubject(context, nextType) ? false : current.manual,
+      pendingCandidateId: lookupEnabledForSubject(context, nextType) ? null : current.pendingCandidateId,
+      form: { ...current.form, subject_type: nextType, tax_status: nextTax },
+    }));
     setFormError('');
-    if (lookupEnabledForSubject(context, nextType)) {
-      setSelected(false);
-      setManual(false);
-    }
   };
-  const save = (submit: boolean) => {
+  const applyCandidate = (candidate: LegalEntityCandidate) => {
+    setLookupError('');
+    setFormError('');
+    setEdit((current) => applyLookupCandidate(current, candidate));
+  };
+  const cancel = () => {
+    setLookupError('');
+    setFormError('');
+    setEdit(cancelLegalEntityEdit(value));
+  };
+  const persist = async (submit: boolean) => {
     if (context === 'partner') {
       const error = partnerLegalFormError(form, submit);
       if (error) {
@@ -112,36 +102,40 @@ export function LegalEntityForm({
         return;
       }
     }
-    onSave(legalEntityWritePayload(form, submit));
+    const persistRequest = persistLookupRequest(edit);
+    let nextForm = form;
+    if (persistRequest) {
+      setLookupPending(true);
+      try {
+        const result = await api.post<{ legal_entity: LegalEntityFormValue }>(
+          '/legal-entity-lookup/select',
+          { candidate_id: persistRequest.candidate_id, target_context: context },
+        );
+        nextForm = {
+          ...snapshotLegalEntityForm(result.legal_entity),
+          tax_status: form.tax_status,
+        };
+        setEdit(initialLegalEntityEdit(nextForm));
+        onLookupApplied?.();
+      } catch (err) {
+        setLookupError(financeApiErrorText(err, 'Не удалось сохранить организацию'));
+        return;
+      } finally {
+        setLookupPending(false);
+      }
+    }
+    onSave(legalEntityWritePayload(nextForm, submit));
   };
   const status = form.verification_status || 'DRAFT';
   const lookupEnabled = lookupEnabledForSubject(context, form.subject_type);
-  const registryLocked = Boolean(form.lookup_provider) && selected && !manual;
+  const registryLocked = Boolean(form.lookup_provider) && selected && !manual && !edit.pendingCandidateId;
   const showLookup = lookupEnabled && !selected && !manual;
   const allowedTypes = subjectTypeOptions(context);
   const taxOptions = taxStatusOptions(context, form.subject_type, form.tax_status);
   const unsupportedIndividual = context === 'partner' && isUnsupportedPartnerIndividual(form.subject_type, form.tax_status);
   const npdLocked = context === 'partner' && form.subject_type === 'INDIVIDUAL' && form.tax_status === 'NPD';
   const typeSelectValue = unsupportedIndividual ? '' : form.subject_type;
-
-  const applyCandidate = async (candidate: LegalEntityCandidate) => {
-    setLookupError('');
-    setLookupPending(true);
-    try {
-      const result = await api.post<{ legal_entity: LegalEntityFormValue }>(
-        '/legal-entity-lookup/select',
-        { candidate_id: candidate.candidate_id, target_context: context },
-      );
-      setForm({ ...EMPTY, ...result.legal_entity });
-      setSelected(true);
-      setManual(false);
-      onLookupApplied?.();
-    } catch (err) {
-      setLookupError(financeApiErrorText(err, 'Не удалось выбрать организацию'));
-    } finally {
-      setLookupPending(false);
-    }
-  };
+  const busy = Boolean(pending || lookupPending);
 
   const typeField = (
     <label className="space-y-1 min-w-0">
@@ -190,9 +184,16 @@ export function LegalEntityForm({
             context={context}
             subjectType={form.subject_type}
             onSelect={applyCandidate}
-            onManual={() => setManual(true)}
+            onManual={() => setEdit((current) => ({ ...current, manual: true, selected: false }))}
             selecting={lookupPending}
           />
+          {dirty ? (
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button type="button" variant="secondary" disabled={busy} onClick={cancel}>
+                Отмена
+              </Button>
+            </div>
+          ) : null}
         </>
       ) : null}
 
@@ -208,13 +209,19 @@ export function LegalEntityForm({
             })}
           </p>
           {form.legal_address ? <p className="text-xs text-muted-foreground">{form.legal_address}</p> : null}
+          {edit.pendingCandidateId ? (
+            <p className="text-xs text-warning pt-1">Изменения не сохранены</p>
+          ) : null}
           {lookupEnabled ? (
             <button
               type="button"
               className="text-sm text-primary pt-1"
               onClick={() => {
-                setSelected(false);
-                setManual(false);
+                setEdit((current) => ({
+                  ...current,
+                  selected: false,
+                  manual: false,
+                }));
               }}
             >
               Изменить организацию
@@ -297,12 +304,20 @@ export function LegalEntityForm({
 
       {(!showLookup || selected || manual || !lookupEnabled) && (
         <div className="flex flex-wrap gap-2 pt-1">
-          <Button type="button" variant="secondary" disabled={pending || lookupPending} onClick={() => save(false)}>
-            Сохранить черновик
-          </Button>
-          <Button type="button" disabled={pending || lookupPending} onClick={() => save(true)}>
-            Отправить на проверку
-          </Button>
+          {dirty ? (
+            <>
+              <Button type="button" disabled={busy} onClick={() => void persist(false)}>
+                Сохранить изменения
+              </Button>
+              <Button type="button" variant="secondary" disabled={busy} onClick={cancel}>
+                Отмена
+              </Button>
+            </>
+          ) : (
+            <Button type="button" disabled={busy} onClick={() => void persist(true)}>
+              Отправить на проверку
+            </Button>
+          )}
         </div>
       )}
     </div>

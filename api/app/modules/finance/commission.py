@@ -21,7 +21,11 @@ from app.modules.finance.errors import fin_error
 from app.modules.finance.ledger import record_entry
 from app.modules.finance.metrics import inc
 from app.modules.finance.money import as_money, assert_positive, assert_rub
-from app.modules.finance.self_deal import assert_not_self_deal
+from app.modules.finance.self_deal import (
+    SELF_PROMOTION_INVALID,
+    check_self_deal,
+    record_self_promotion_blocked,
+)
 from app.modules.offers.models import Offer, OfferCommissionRule
 from app.modules.partners.models import PartnerProfile
 
@@ -72,7 +76,15 @@ async def create_commission_for_approved_conversion(
     offer = await db.scalar(select(Offer).where(Offer.id == conversion.offer_id))
     if not offer:
         raise fin_error("FIN_OFFER_NOT_FOUND", "Offer not found", 404)
-    await assert_not_self_deal(db, offer=offer, partner_id=conversion.partner_id)
+    decision = await check_self_deal(db, offer=offer, partner_id=conversion.partner_id)
+    if not decision.allowed:
+        await record_self_promotion_blocked(
+            db,
+            decision,
+            actor_user_id=actor_user_id,
+            extra={"conversion_id": conversion.id, "stage": "commission"},
+        )
+        return None
 
     currency = assert_rub(conversion.currency)
     amount = as_money(conversion.commission_amount)
@@ -239,3 +251,71 @@ async def earnings_breakdown(db: AsyncSession, *, partner_id: int | None = None,
         elif status == CommissionStatus.CANCELLED.value:
             totals["cancelled"] += amount
     return {key: (float(value) if key != "currency" else value) for key, value in totals.items()}
+
+
+UNPAID_PAYABLE = {
+    CommissionStatus.PENDING.value,
+    CommissionStatus.HOLD.value,
+    CommissionStatus.APPROVED.value,
+    CommissionStatus.AVAILABLE.value,
+    CommissionStatus.PAYABLE.value,
+    CommissionStatus.PAYOUT_PENDING.value,
+}
+
+
+async def cancel_self_promotion_commission(
+    db: AsyncSession,
+    commission: Commission,
+    *,
+    reason_code: str,
+    actor_user_id: int | None = None,
+    system_actor: str | None = "system",
+) -> str:
+    """Cancel an unpaid self-deal commission. Paid rows stay as-is; audit only."""
+    if commission.status == CommissionStatus.PAID.value:
+        await record_audit(
+            db,
+            action="SELF_PROMOTION_INVALID_AFTER_PAYOUT",
+            entity_type="commission",
+            entity_id=commission.id,
+            actor_user_id=actor_user_id,
+            system_actor=system_actor,
+            old_status=commission.status,
+            reason=reason_code,
+            metadata={
+                "business_id": commission.business_id,
+                "partner_id": commission.partner_id,
+                "offer_id": commission.offer_id,
+                "conversion_id": commission.conversion_id,
+                "commission_id": commission.id,
+                "active_payout_id": commission.active_payout_id,
+            },
+        )
+        return "paid_review"
+    if commission.status in {CommissionStatus.CANCELLED.value, CommissionStatus.REVERSED.value}:
+        return "already_terminal"
+
+    old = commission.status
+    commission.status = CommissionStatus.CANCELLED.value
+    commission.reason_code = reason_code
+    commission.reason = SELF_PROMOTION_INVALID
+    commission.active_payout_id = None
+    await record_audit(
+        db,
+        action="SELF_PROMOTION_COMMISSION_CANCELLED",
+        entity_type="commission",
+        entity_id=commission.id,
+        actor_user_id=actor_user_id,
+        system_actor=system_actor,
+        old_status=old,
+        new_status=CommissionStatus.CANCELLED.value,
+        reason=reason_code,
+        metadata={
+            "business_id": commission.business_id,
+            "partner_id": commission.partner_id,
+            "offer_id": commission.offer_id,
+            "conversion_id": commission.conversion_id,
+            "commission_id": commission.id,
+        },
+    )
+    return "cancelled"

@@ -448,6 +448,9 @@ async def approve_partner(
     ).scalar_one_or_none()
     if not access:
         raise NotFoundError("Application")
+    from app.modules.finance.self_deal import assert_not_self_deal
+
+    await assert_not_self_deal(db, offer=offer, partner_id=access.partner_id, user_id=session_data.get("user_id"))
     access.status = "approved"
     access.approved_at = datetime.now(timezone.utc)
     access.rejection_reason = None
@@ -514,6 +517,10 @@ async def invite_partner(
         ).scalar_one_or_none()
     if not profile:
         raise NotFoundError("Partner")
+
+    from app.modules.finance.self_deal import assert_not_self_deal
+
+    await assert_not_self_deal(db, offer=offer, partner_id=profile.id, user_id=session_data.get("user_id"))
 
     existing = (
         await db.execute(

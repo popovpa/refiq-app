@@ -34,6 +34,7 @@ const statusMap: Record<string, { label: string; className: string }> = {
   paid: { label: 'Выплачено', className: 'bg-accent text-primary' },
   failed: { label: 'Ошибка', className: 'bg-red-50 text-red-700' },
   overdue: { label: 'Просрочено бизнесом', className: 'bg-red-50 text-red-700' },
+  cancelled: { label: 'Отменено', className: 'bg-red-50 text-red-700' },
   manual_review: { label: 'На проверке', className: 'bg-orange-50 text-orange-700' },
 };
 
@@ -63,7 +64,11 @@ export function PartnerPayouts() {
           <p className="font-medium">Выплаты пока недоступны</p>
           <p className="mt-0.5">{financeReasonText(eligibility.reason_code, eligibility.reason_message)}</p>
           <Link to="/partner/settings" className="mt-2 inline-block text-sm font-medium underline">
-            Заполнить юридические данные и реквизиты
+            {eligibility.reason_code === 'PAYOUT_PROFILE_MISSING' ||
+            eligibility.reason_code === 'PAYMENT_DETAILS_INVALID' ||
+            eligibility.reason_code === 'PAYOUT_PROFILE_NOT_VERIFIED'
+              ? 'Заполнить реквизиты для выплат'
+              : 'Заполнить юридические данные и реквизиты'}
           </Link>
         </div>
       )}

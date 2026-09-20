@@ -16,7 +16,6 @@ import { BusinessOfferDetail } from '@/pages/business/OfferDetail';
 import { BusinessPartners } from '@/pages/business/Partners';
 import { BusinessConversions } from '@/pages/business/Conversions';
 import { BusinessPayouts } from '@/pages/business/Payouts';
-import { BusinessBilling } from '@/pages/business/Billing';
 import { BusinessSettings } from '@/pages/business/Settings';
 import { PartnerDashboard } from '@/pages/partner/Dashboard';
 import { PartnerOffers } from '@/pages/partner/Offers';
@@ -55,7 +54,8 @@ export default function App() {
           <Route path="/business/partners" element={<BusinessPartners />} />
           <Route path="/business/conversions" element={<BusinessConversions />} />
           <Route path="/business/payouts" element={<BusinessPayouts />} />
-          <Route path="/business/billing" element={<BusinessBilling />} />
+          <Route path="/business/billing" element={<Navigate to="/business/settings/billing" replace />} />
+          <Route path="/business/settings/billing" element={<BusinessSettings />} />
           <Route path="/business/settings" element={<BusinessSettings />} />
           <Route path="/partner" element={<PartnerDashboard />} />
           <Route path="/partner/offers" element={<PartnerOffers />} />

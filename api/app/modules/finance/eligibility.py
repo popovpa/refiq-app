@@ -68,10 +68,23 @@ class PartnerPayoutEligibilityService:
             return PayoutEligibility(False, "PAYOUT_PROFILE_MISSING", "Payout details are not filled in")
         if profile.status == ProfileStatus.BLOCKED.value:
             return PayoutEligibility(False, "PAYOUT_PROFILE_NOT_VERIFIED", "Payout profile is blocked")
+        # Bootstrap always creates an INCOMPLETE profile row before the partner
+        # enters bank details. Empty details must not look like "awaiting verification".
+        if not _payment_details_valid(profile):
+            has_any_details = bool(
+                (profile.bank_account or "").strip() or (profile.bank_bik or "").strip()
+            )
+            if has_any_details:
+                return PayoutEligibility(False, "PAYMENT_DETAILS_INVALID", "Bank details are invalid")
+            return PayoutEligibility(False, "PAYOUT_PROFILE_MISSING", "Payout details are not filled in")
         if profile.status != ProfileStatus.VERIFIED.value:
             return PayoutEligibility(False, "PAYOUT_PROFILE_NOT_VERIFIED", "Payout details are not verified")
-        if not _payment_details_valid(profile):
-            return PayoutEligibility(False, "PAYMENT_DETAILS_INVALID", "Bank details are invalid")
+        if profile.legal_entity_id and partner.legal_entity_id and profile.legal_entity_id != partner.legal_entity_id:
+            return PayoutEligibility(
+                False,
+                "PAYOUT_PROFILE_NOT_VERIFIED",
+                "Payout profile does not match partner legal entity",
+            )
         return PayoutEligibility(True, None, None)
 
 

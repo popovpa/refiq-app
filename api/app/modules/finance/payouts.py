@@ -27,7 +27,12 @@ from app.modules.finance.metrics import inc
 from app.modules.finance.models import LegalEntity, PartnerPayoutProfile
 from app.modules.finance.money import as_money, as_utc, assert_positive, assert_rub
 from app.modules.finance.providers.factory import get_payout_provider
-from app.modules.finance.self_deal import assert_not_self_deal
+from app.modules.finance.commission import cancel_self_promotion_commission
+from app.modules.finance.self_deal import (
+    PAYOUT_SELF_DEAL_FORBIDDEN,
+    SELF_PROMOTION_INVALID,
+    check_self_deal,
+)
 from app.modules.finance.suspension import is_business_fault, refresh_traffic_suspension
 from app.modules.offers.models import Offer
 from app.modules.partners.models import PartnerProfile
@@ -115,6 +120,24 @@ async def _generate_for_pair(
             .with_for_update()
         )
     ).scalars().all()
+    eligible_commissions: list[Commission] = []
+    for commission in commissions:
+        offer = await db.scalar(select(Offer).where(Offer.id == commission.offer_id)) if commission.offer_id else None
+        decision = await check_self_deal(
+            db,
+            partner_id=partner_id,
+            offer=offer,
+            business_id=business_id,
+        )
+        if not decision.allowed:
+            await cancel_self_promotion_commission(
+                db,
+                commission,
+                reason_code=decision.reason_code or PAYOUT_SELF_DEAL_FORBIDDEN,
+            )
+            continue
+        eligible_commissions.append(commission)
+    commissions = eligible_commissions
     total = sum((as_money(item.amount) for item in commissions), Decimal("0.00"))
     if total < _min_amount() or not commissions:
         return None
@@ -128,18 +151,17 @@ async def _generate_for_pair(
     partner = await db.scalar(select(PartnerProfile).where(PartnerProfile.id == partner_id))
     if not business or not partner:
         return None
-    offer_ids = {item.offer_id for item in commissions if item.offer_id}
-    for offer_id in offer_ids:
-        offer = await db.scalar(select(Offer).where(Offer.id == offer_id))
-        if offer:
-            await assert_not_self_deal(db, offer=offer, partner_id=partner_id)
 
     if not eligibility.eligible:
         # Obligation is still created; sending is gated on confirm.
         pass
 
+    profile = await db.scalar(
+        select(PartnerPayoutProfile).where(PartnerPayoutProfile.partner_id == partner_id)
+    )
     payout = Payout(
         partner_id=partner_id,
+        payout_profile_id=profile.id if profile else None,
         payer_business_id=business_id,
         payer_legal_entity_id=business.legal_entity_id,
         recipient_legal_entity_id=partner.legal_entity_id,
@@ -204,6 +226,9 @@ async def confirm_payout(
 
     if not payout.payer_business_id:
         raise fin_error("FIN_PAYOUT_INVALID", "Payout payer is missing")
+    await sanitize_payout_self_deal(db, payout, actor_user_id=actor_user_id)
+    if payout.status == PayoutStatus.CANCELLED.value:
+        raise fin_error(PAYOUT_SELF_DEAL_FORBIDDEN, "Payout cancelled: self-promotion items only")
     business = await db.scalar(select(Business).where(Business.id == payout.payer_business_id))
     if not business:
         raise fin_error("FIN_BUSINESS_NOT_FOUND", "Business not found", 404)
@@ -232,6 +257,7 @@ async def confirm_payout(
     )
     if not profile or profile.status != ProfileStatus.VERIFIED.value:
         raise fin_error("FIN_PAYOUT_PROFILE_REQUIRED", "Verified payout profile is required")
+    payout.payout_profile_id = profile.id
 
     confirm_key = f"payout-confirm:{payout.id}"
     if not await claim_idempotency(db, confirm_key, "payout_confirm", resource_type="payout", resource_id=payout.id):
@@ -313,7 +339,7 @@ async def mark_payout_paid(db: AsyncSession, payout: Payout) -> None:
     items = (
         await db.execute(select(PayoutItem).where(PayoutItem.payout_id == payout.id))
     ).scalars().all()
-    commission_ids = [item.commission_id for item in items]
+    commission_ids = [item.commission_id for item in items if not item.excluded_reason]
     if commission_ids:
         commissions = (
             await db.execute(select(Commission).where(Commission.id.in_(commission_ids)))
@@ -438,6 +464,98 @@ async def mark_overdue_payouts(db: AsyncSession, *, now: datetime | None = None)
     return count
 
 
+async def sanitize_payout_self_deal(
+    db: AsyncSession,
+    payout: Payout,
+    *,
+    actor_user_id: int | None = None,
+    system_actor: str | None = "system",
+) -> Payout:
+    """Drop self-deal items from an unpaid payout and cancel it if nothing remains."""
+    if payout.status == PayoutStatus.PAID.value:
+        return payout
+    items = (await db.execute(select(PayoutItem).where(PayoutItem.payout_id == payout.id))).scalars().all()
+    remaining: list[PayoutItem] = []
+    removed = 0
+    for item in items:
+        if item.excluded_reason:
+            continue
+        commission = await db.get(Commission, item.commission_id)
+        if not commission:
+            remaining.append(item)
+            continue
+        offer = await db.scalar(select(Offer).where(Offer.id == commission.offer_id)) if commission.offer_id else None
+        decision = await check_self_deal(
+            db,
+            partner_id=payout.partner_id,
+            offer=offer,
+            business_id=payout.payer_business_id,
+        )
+        if decision.allowed:
+            remaining.append(item)
+            continue
+        item.excluded_reason = SELF_PROMOTION_INVALID
+        removed += 1
+        await cancel_self_promotion_commission(
+            db,
+            commission,
+            reason_code=decision.reason_code or PAYOUT_SELF_DEAL_FORBIDDEN,
+            actor_user_id=actor_user_id,
+            system_actor=system_actor,
+        )
+        await record_audit(
+            db,
+            action="PAYOUT_ITEM_REMOVED_SELF_PROMOTION",
+            entity_type="payout_item",
+            entity_id=item.id,
+            actor_user_id=actor_user_id,
+            system_actor=system_actor,
+            reason=decision.reason_code,
+            metadata={
+                "payout_id": payout.id,
+                "commission_id": commission.id,
+                "business_id": payout.payer_business_id,
+                "partner_id": payout.partner_id,
+                "offer_id": commission.offer_id,
+            },
+        )
+    if not removed:
+        return payout
+    old_amount = payout.amount
+    new_total = sum((as_money(item.amount) for item in remaining), Decimal("0.00"))
+    old_status = payout.status
+    if not remaining or new_total <= 0:
+        payout.status = PayoutStatus.CANCELLED.value
+        payout.failure_class = PayoutFailureClass.PARTNER_NOT_ELIGIBLE.value
+        payout.failure_message = SELF_PROMOTION_INVALID
+        await record_audit(
+            db,
+            action="payout.cancelled",
+            entity_type="payout",
+            entity_id=payout.id,
+            actor_user_id=actor_user_id,
+            system_actor=system_actor,
+            old_status=old_status,
+            new_status=payout.status,
+            reason=SELF_PROMOTION_INVALID,
+            metadata={"previous_amount": str(old_amount), "removed_items": removed},
+        )
+        return payout
+    payout.amount = as_money(new_total)
+    payout.version = int(payout.version or 1) + 1
+    await record_audit(
+        db,
+        action="payout.recalculated",
+        entity_type="payout",
+        entity_id=payout.id,
+        actor_user_id=actor_user_id,
+        system_actor=system_actor,
+        reason=SELF_PROMOTION_INVALID,
+        metadata={"previous_amount": str(old_amount), "amount": str(payout.amount), "removed_items": removed},
+    )
+    return payout
+
+
 async def _release_commissions(db: AsyncSession, payout: Payout) -> None:
     items = (await db.execute(select(PayoutItem).where(PayoutItem.payout_id == payout.id))).scalars().all()
     ids = [item.commission_id for item in items]
@@ -471,6 +589,7 @@ def serialize_payout(payout: Payout, *, partner_name: str | None = None) -> dict
         "payer_legal_entity_id": payout.payer_legal_entity_id,
         "recipient_partner_id": payout.partner_id,
         "recipient_legal_entity_id": payout.recipient_legal_entity_id,
+        "payout_profile_id": payout.payout_profile_id,
         "partner_id": payout.partner_id,
         "partner_name": partner_name,
         "amount": float(as_money(payout.amount)),

@@ -1,4 +1,27 @@
-export type SettingsTab = 'company' | 'legal' | 'sites' | 'integrations' | 'defaults';
+export type SettingsTab = 'company' | 'legal' | 'sites' | 'integrations' | 'defaults' | 'billing';
+
+export const SETTINGS_TABS: Array<{ key: SettingsTab; label: string }> = [
+  { key: 'company', label: 'Компания' },
+  { key: 'legal', label: 'Юридические данные' },
+  { key: 'sites', label: 'Сайты' },
+  { key: 'integrations', label: 'Интеграции' },
+  { key: 'defaults', label: 'По умолчанию' },
+  { key: 'billing', label: 'Тариф и биллинг' },
+];
+
+export const BUSINESS_SETTINGS_BILLING_PATH = '/business/settings/billing';
+export const BUSINESS_SETTINGS_PATH = '/business/settings';
+
+export function isSettingsTab(value: string | null | undefined): value is SettingsTab {
+  return SETTINGS_TABS.some((item) => item.key === value);
+}
+
+export function settingsPathForTab(tab: SettingsTab) {
+  if (tab === 'billing') return BUSINESS_SETTINGS_BILLING_PATH;
+  if (tab === 'company') return BUSINESS_SETTINGS_PATH;
+  return `${BUSINESS_SETTINGS_PATH}?tab=${tab}`;
+}
+
 export type IntegrationKind = 'postback' | 'sdk';
 
 export interface BusinessWorkspaceSettings {

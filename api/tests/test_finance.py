@@ -156,6 +156,29 @@ async def test_payout_eligibility_matrix(client, db):
 
 
 @pytest.mark.asyncio
+async def test_verified_legal_with_empty_payout_details_is_missing_not_unverified(client, db):
+    """Legal VERIFIED must not surface as «реквизиты не подтверждены» when bank details are empty."""
+    await register_user(client, "elig-details@example.com")
+    await become_partner(client, "Elig Details")
+    partner = (await db.execute(select(PartnerProfile))).scalar_one()
+    await _eligible_partner(db, partner.id, subject=LegalSubjectType.SOLE_PROPRIETOR)
+
+    profile = (
+        await db.execute(select(PartnerPayoutProfile).where(PartnerPayoutProfile.partner_id == partner.id))
+    ).scalar_one()
+    profile.bank_account = None
+    profile.bank_bik = None
+    profile.bank_name = None
+    profile.status = ProfileStatus.INCOMPLETE.value
+    profile.verified_at = None
+    await db.commit()
+
+    result = await PartnerPayoutEligibilityService(db).check_payout_eligibility(partner.id)
+    assert result.eligible is False
+    assert result.reason_code == "PAYOUT_PROFILE_MISSING"
+
+
+@pytest.mark.asyncio
 async def test_commission_snapshot_not_recalculated(client, db):
     await register_business(client, "snap@example.com")
     created = await client.post("/api/v1/business/offers", json=offer_payload(status="active", commission_value=10))

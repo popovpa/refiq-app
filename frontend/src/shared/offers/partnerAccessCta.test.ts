@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { partnerAccessCta } from '@/shared/offers/partnerAccessCta';
 
 describe('partnerAccessCta', () => {
+  it('uses business-owned promotion CTA for the user own offer', () => {
+    const cta = partnerAccessCta({ isOwn: true, accessPolicy: 'open', offerStatus: 'active' });
+    expect(cta.kind).toBe('own-active');
+    expect(cta.label).toBe('Продвигать свой оффер');
+    expect(cta.label).not.toBe('Продвигать оффер');
+  });
+
   it('asks to promote an approval offer before a request exists', () => {
     const cta = partnerAccessCta({ isOwn: false, accessPolicy: 'approval' });
     expect(cta.kind).toBe('promote-approval');

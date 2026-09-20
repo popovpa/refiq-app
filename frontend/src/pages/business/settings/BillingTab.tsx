@@ -45,7 +45,7 @@ const statusLabel: Record<string, string> = {
   paid: 'Оплачен',
 };
 
-export function BusinessBilling() {
+export function BillingTab() {
   const { addToast } = useToast();
   const queryClient = useQueryClient();
   const { data: subData, isLoading: subLoading } = useQuery<SubscriptionResponse>({
@@ -67,22 +67,17 @@ export function BusinessBilling() {
   });
 
   if (subLoading || histLoading) {
-    return (
-      <div className="space-y-5">
-        <h1 className="ui-page-title">Тариф и счета</h1>
-        <Skeleton className="h-28 rounded-xl" />
-      </div>
-    );
+    return <Skeleton className="h-72 rounded-xl" />;
   }
 
   const sub = subData?.subscription;
   const testMode = subData?.financial_mode === 'TEST' || history?.financial_mode === 'TEST';
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div>
-        <h1 className="ui-page-title">Тариф и счета</h1>
-        <p className="mt-1.5 text-sm text-muted-foreground">Оплата RefIQ отдельно от выплат партнёрам.</p>
+        <h2 className="ui-section-title">Тариф и биллинг</h2>
+        <p className="mt-1 text-sm text-muted-foreground">Оплата RefIQ отдельно от выплат партнёрам.</p>
       </div>
       <TestModeBanner visible={testMode} />
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -120,7 +115,8 @@ export function BusinessBilling() {
             {(history?.invoices || []).map((invoice) => (
               <tr key={invoice.id}>
                 <td className="text-muted-foreground">
-                  {new Date(invoice.period_start).toLocaleDateString('ru-RU')} — {new Date(invoice.period_end).toLocaleDateString('ru-RU')}
+                  {new Date(invoice.period_start).toLocaleDateString('ru-RU')} —{' '}
+                  {new Date(invoice.period_end).toLocaleDateString('ru-RU')}
                 </td>
                 <td className="text-right font-medium">{formatMoney(invoice.amount, '₽')}</td>
                 <td>{statusLabel[invoice.status] || invoice.status}</td>
