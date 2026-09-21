@@ -47,10 +47,12 @@ export function DataTable({
   columns,
   rows,
   rowKey,
+  onRowClick,
 }: {
   columns: { key: string; header: string; className?: string; align?: 'left' | 'right' }[];
   rows: Array<Record<string, ReactNode>>;
   rowKey?: (row: Record<string, ReactNode>, index: number) => string;
+  onRowClick?: (row: Record<string, ReactNode>, index: number) => void;
 }) {
   return (
     <div className="ui-card overflow-auto">
@@ -66,7 +68,11 @@ export function DataTable({
         </thead>
         <tbody>
           {rows.map((row, index) => (
-            <tr key={rowKey ? rowKey(row, index) : String(index)}>
+            <tr
+              key={rowKey ? rowKey(row, index) : String(index)}
+              className={onRowClick ? 'cursor-pointer hover:bg-muted/50' : undefined}
+              onClick={onRowClick ? () => onRowClick(row, index) : undefined}
+            >
               {columns.map((col) => (
                 <td key={col.key} className={cn(col.className, col.align === 'right' && 'text-right tabular-nums')}>
                   {row[col.key]}

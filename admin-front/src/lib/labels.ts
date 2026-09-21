@@ -92,6 +92,7 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   business: 'Бизнес',
   partner: 'Партнёр',
   offer: 'Оффер',
+  OFFER: 'Оффер',
   site: 'Сайт',
   tracking_link: 'Ссылка',
   click: 'Клик',
@@ -105,5 +106,33 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
 
 export function entityTypeLabel(type?: string | null): string {
   if (!type) return '';
-  return ENTITY_TYPE_LABELS[type] || type;
+  return ENTITY_TYPE_LABELS[type] || ENTITY_TYPE_LABELS[type.toLowerCase()] || type;
+}
+
+export const AUDIT_EVENT_LABELS: Record<string, string> = {
+  OFFER_CREATED: 'Оффер создан',
+  OFFER_UPDATED: 'Оффер изменён',
+  OFFER_STATUS_CHANGED: 'Статус оффера изменён',
+  OFFER_HOLD_CHANGED: 'Холд оффера изменён',
+  OFFER_TRAFFIC_POLICY_CHANGED: 'Политика трафика оффера изменена',
+  OFFER_ACCESS_POLICY_CHANGED: 'Политика доступа оффера изменена',
+  OFFER_PRODUCT_CHANGED: 'Продукт оффера изменён',
+};
+
+export function auditEventLabel(eventType?: string | null): string {
+  if (!eventType) return '—';
+  return AUDIT_EVENT_LABELS[eventType] || eventType;
+}
+
+export const ACTOR_TYPE_LABELS: Record<string, string> = {
+  USER: 'Пользователь',
+  ADMIN: 'Админ',
+  SYSTEM: 'Система',
+  API_CLIENT: 'API-клиент',
+  AI: 'AI',
+};
+
+export function actorTypeLabel(actorType?: string | null): string {
+  if (!actorType) return '—';
+  return ACTOR_TYPE_LABELS[actorType] || actorType;
 }

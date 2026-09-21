@@ -17,6 +17,7 @@ from app.common.enums import (
 from app.core.config import settings
 from app.modules.businesses.models import Business
 from app.modules.commissions.models import Commission
+from app.modules.conversions.models import Conversion
 from app.modules.finance.audit import record_audit
 from app.modules.finance.eligibility import PartnerPayoutEligibilityService
 from app.modules.finance.errors import fin_error
@@ -582,8 +583,16 @@ def _eligibility_failure_class(code: str | None) -> str:
     return mapping.get(code or "", PayoutFailureClass.PARTNER_NOT_ELIGIBLE.value)
 
 
-def serialize_payout(payout: Payout, *, partner_name: str | None = None) -> dict:
-    return {
+def serialize_payout(
+    payout: Payout,
+    *,
+    partner_name: str | None = None,
+    business_name: str | None = None,
+    commissions: list[dict] | None = None,
+    period_start: datetime | None = None,
+    period_end: datetime | None = None,
+) -> dict:
+    payload = {
         "id": payout.id,
         "payer_business_id": payout.payer_business_id,
         "payer_legal_entity_id": payout.payer_legal_entity_id,
@@ -592,6 +601,10 @@ def serialize_payout(payout: Payout, *, partner_name: str | None = None) -> dict
         "payout_profile_id": payout.payout_profile_id,
         "partner_id": payout.partner_id,
         "partner_name": partner_name,
+        "business": {
+            "id": payout.payer_business_id,
+            "name": business_name,
+        },
         "amount": float(as_money(payout.amount)),
         "currency": payout.currency,
         "status": payout.status,
@@ -599,6 +612,8 @@ def serialize_payout(payout: Payout, *, partner_name: str | None = None) -> dict
         "provider_transaction_id": payout.provider_transaction_id,
         "provider_status": payout.provider_status,
         "failure_class": payout.failure_class,
+        "period_start": period_start.isoformat() if period_start else None,
+        "period_end": period_end.isoformat() if period_end else None,
         "due_at": payout.due_at.isoformat() if payout.due_at else None,
         "created_at": payout.created_at.isoformat() if payout.created_at else None,
         "confirmed_at": payout.confirmed_at.isoformat() if payout.confirmed_at else None,
@@ -606,3 +621,118 @@ def serialize_payout(payout: Payout, *, partner_name: str | None = None) -> dict
         "paid_at": payout.paid_at.isoformat() if payout.paid_at else None,
         "failed_at": payout.failed_at.isoformat() if payout.failed_at else None,
     }
+    if commissions is not None:
+        payload["commissions"] = commissions
+    return payload
+
+
+def _conversion_timestamp(conversion) -> datetime | None:
+    return conversion.converted_at or conversion.created_at
+
+
+def serialize_payout_commission_row(
+    item: PayoutItem,
+    *,
+    commission: Commission | None,
+    conversion,
+    offer: Offer | None,
+) -> dict:
+    stamp = _conversion_timestamp(conversion) if conversion else None
+    return {
+        "id": commission.id if commission else item.commission_id,
+        "amount": float(as_money(item.amount)),
+        "currency": (commission.currency if commission else None) or "RUB",
+        "conversion": {
+            "id": conversion.id if conversion else (commission.conversion_id if commission else None),
+            "created_at": stamp.isoformat() if stamp else None,
+            "amount": float(conversion.amount) if conversion and conversion.amount is not None else None,
+            "offer": {
+                "id": offer.id if offer else (commission.offer_id if commission else None),
+                "name": offer.name if offer else None,
+            },
+        },
+    }
+
+
+async def serialize_partner_payouts(db: AsyncSession, payouts: list[Payout]) -> list[dict]:
+    """Partner-facing payout list with business name and included commissions."""
+    if not payouts:
+        return []
+
+    business_ids = {p.payer_business_id for p in payouts if p.payer_business_id}
+    businesses: dict[int, Business] = {}
+    if business_ids:
+        rows = (
+            await db.execute(select(Business).where(Business.id.in_(business_ids)))
+        ).scalars().all()
+        businesses = {row.id: row for row in rows}
+
+    included_items = [
+        item
+        for payout in payouts
+        for item in (payout.items or [])
+        if not item.excluded_reason
+    ]
+    commission_ids = [item.commission_id for item in included_items]
+    commissions: dict[int, Commission] = {}
+    if commission_ids:
+        commission_rows = (
+            await db.execute(select(Commission).where(Commission.id.in_(commission_ids)))
+        ).scalars().all()
+        commissions = {row.id: row for row in commission_rows}
+
+    conversion_ids = {c.conversion_id for c in commissions.values() if c.conversion_id}
+    conversions: dict[int, Conversion] = {}
+    if conversion_ids:
+        conversion_rows = (
+            await db.execute(select(Conversion).where(Conversion.id.in_(conversion_ids)))
+        ).scalars().all()
+        conversions = {row.id: row for row in conversion_rows}
+
+    offer_ids = {c.offer_id for c in commissions.values() if c.offer_id}
+    for conversion in conversions.values():
+        if conversion.offer_id:
+            offer_ids.add(conversion.offer_id)
+    offers: dict[int, Offer] = {}
+    if offer_ids:
+        offer_rows = (await db.execute(select(Offer).where(Offer.id.in_(offer_ids)))).scalars().all()
+        offers = {row.id: row for row in offer_rows}
+
+    result: list[dict] = []
+    for payout in payouts:
+        business = businesses.get(payout.payer_business_id) if payout.payer_business_id else None
+        commission_rows: list[dict] = []
+        period_stamps: list[datetime] = []
+        for item in payout.items or []:
+            if item.excluded_reason:
+                continue
+            commission = commissions.get(item.commission_id)
+            conversion = conversions.get(commission.conversion_id) if commission else None
+            offer = None
+            if conversion and conversion.offer_id:
+                offer = offers.get(conversion.offer_id)
+            elif commission and commission.offer_id:
+                offer = offers.get(commission.offer_id)
+            row = serialize_payout_commission_row(
+                item, commission=commission, conversion=conversion, offer=offer
+            )
+            commission_rows.append(row)
+            stamp = _conversion_timestamp(conversion) if conversion else None
+            if stamp:
+                period_stamps.append(stamp)
+        commission_rows.sort(
+            key=lambda row: row["conversion"]["created_at"] or "",
+            reverse=True,
+        )
+        period_start = min(period_stamps) if period_stamps else None
+        period_end = max(period_stamps) if period_stamps else None
+        result.append(
+            serialize_payout(
+                payout,
+                business_name=business.name if business else None,
+                commissions=commission_rows,
+                period_start=period_start,
+                period_end=period_end,
+            )
+        )
+    return result

@@ -1,13 +1,17 @@
 from datetime import datetime, timezone
 
+from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.audit.service import record_admin_action
 from app.admin.auth.models import AdminUser
 from app.common.enums import BusinessStatus, LinkStatus, OfferStatus, PartnerStatus, SiteStatus
 from app.core.exceptions import AppError, NotFoundError
+from app.modules.audit.context import audit_context_from_request
+from app.modules.audit.events import ActorType
 from app.modules.businesses.models import Business
 from app.modules.links.models import TrackingLink
+from app.modules.offers.audit import record_offer_mutations, snapshot_offer
 from app.modules.offers.models import Offer
 from app.modules.partners.models import PartnerProfile
 from app.modules.qr.service import QrCodeService
@@ -130,13 +134,29 @@ class AdminActionService:
         )
         return result
 
-    async def pause_offer(self, admin: AdminUser, offer_id: int, reason: str) -> Offer:
+    async def pause_offer(
+        self,
+        admin: AdminUser,
+        offer_id: int,
+        reason: str,
+        request: Request | None = None,
+    ) -> Offer:
         reason = await self._require_reason(reason)
         offer = await self.db.get(Offer, offer_id)
         if not offer:
             raise NotFoundError("Offer")
+        before = snapshot_offer(offer)
         offer.status = OfferStatus.PAUSED.value
         offer.updated_at = datetime.now(timezone.utc)
+        await record_offer_mutations(
+            self.db,
+            offer,
+            before,
+            snapshot_offer(offer),
+            _admin_audit_context(admin, request),
+            source_operation="admin.offers.pause",
+            reason=reason,
+        )
         await record_admin_action(
             self.db,
             admin=admin,
@@ -147,13 +167,29 @@ class AdminActionService:
         )
         return offer
 
-    async def activate_offer(self, admin: AdminUser, offer_id: int, reason: str) -> Offer:
+    async def activate_offer(
+        self,
+        admin: AdminUser,
+        offer_id: int,
+        reason: str,
+        request: Request | None = None,
+    ) -> Offer:
         reason = await self._require_reason(reason)
         offer = await self.db.get(Offer, offer_id)
         if not offer:
             raise NotFoundError("Offer")
+        before = snapshot_offer(offer)
         offer.status = OfferStatus.ACTIVE.value
         offer.updated_at = datetime.now(timezone.utc)
+        await record_offer_mutations(
+            self.db,
+            offer,
+            before,
+            snapshot_offer(offer),
+            _admin_audit_context(admin, request),
+            source_operation="admin.offers.activate",
+            reason=reason,
+        )
         await record_admin_action(
             self.db,
             admin=admin,
@@ -223,3 +259,21 @@ class AdminActionService:
             details={"short_code": link.short_code},
         )
         return link
+
+
+def _admin_audit_context(admin: AdminUser, request: Request | None):
+    from app.modules.audit.context import AuditContext
+
+    if request is not None:
+        return audit_context_from_request(
+            request,
+            actor_type=ActorType.ADMIN,
+            source_service="admin",
+            admin_id=admin.id,
+        )
+    return AuditContext(
+        actor_type=ActorType.ADMIN,
+        source_service="admin",
+        admin_id=admin.id,
+    )
+

@@ -4,10 +4,10 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.common.enums import ProfileStatus, TermsContext
+from app.common.enums import PayoutStatus, ProfileStatus, TermsContext
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
@@ -22,7 +22,7 @@ from app.modules.finance.models import LegalEntity
 from app.modules.finance.verification import LegalEntityVerificationService
 from app.modules.finance.money import as_money
 from app.modules.finance.permissions import require_partner_profile
-from app.modules.finance.payouts import serialize_payout
+from app.modules.finance.payouts import serialize_partner_payouts
 from app.modules.finance.serialize import payout_profile_status_from_details, serialize_payout_profile
 from app.modules.finance.terms import record_terms_acceptance
 from app.modules.partners.models import PartnerProfile
@@ -207,6 +207,12 @@ async def list_payouts(
             select(Payout).where(Payout.partner_id == partner.id).order_by(Payout.created_at.desc()).limit(50)
         )
     ).scalars().all()
+    paid_total = await db.scalar(
+        select(func.coalesce(func.sum(Payout.amount), 0)).where(
+            Payout.partner_id == partner.id,
+            Payout.status == PayoutStatus.PAID.value,
+        )
+    )
     eligibility = await PartnerPayoutEligibilityService(db).check_payout_eligibility(partner.id)
     return {
         "pending": totals["pending"],
@@ -214,8 +220,8 @@ async def list_payouts(
         "available": totals["available"],
         "available_amount": totals["available"],
         "payout_pending": totals["payout_pending"],
-        "paid": totals["paid"],
-        "payouts": [serialize_payout(item) for item in rows],
+        "paid": float(as_money(paid_total)),
+        "payouts": await serialize_partner_payouts(db, list(rows)),
         "payout_eligibility": eligibility.as_dict(),
         **_mode_payload(),
     }

@@ -531,6 +531,89 @@ async def test_finance_partner_settings_persist(client):
 
 
 @pytest.mark.asyncio
+async def test_partner_payout_list_includes_business_and_commissions(client, db):
+    await register_business(client, "payout-detail-biz@example.com", name="ООО Детали")
+    created = await client.post(
+        "/api/v1/business/offers",
+        json=offer_payload(status="active", name="Оффер Детали"),
+    )
+    assert created.status_code == 200, created.text
+    offer_id = created.json()["id"]
+    partner = await partner_with_access(offer_id, "payout-detail-p@example.com")
+    try:
+        biz = (await db.execute(select(Business))).scalars().first()
+        partner_row = (await db.execute(select(PartnerProfile))).scalars().first()
+        await _eligible_partner(db, partner_row.id)
+        await _verify_legal_entity(db, biz.legal_entity_id)
+        await _add_available_commission(
+            db,
+            business_id=biz.id,
+            partner_id=partner_row.id,
+            offer_id=offer_id,
+            amount="500.00",
+        )
+        from tests.conftest import TestingSessionLocal
+
+        async with TestingSessionLocal() as session:
+            payouts = await generate_due_payouts(session, ignore_interval=True)
+            assert len(payouts) == 1
+            payouts[0].provider_transaction_id = "tx-abc-123"
+            payouts[0].paid_at = datetime.now(timezone.utc)
+            payouts[0].status = PayoutStatus.PAID.value
+            await session.commit()
+            payout_id = payouts[0].id
+
+        listed = await partner.get("/api/v1/partner/payouts")
+        assert listed.status_code == 200, listed.text
+        row = listed.json()["payouts"][0]
+        assert row["id"] == payout_id
+        assert row["business"]["id"] == biz.id
+        assert row["business"]["name"] == "ООО Детали"
+        assert row["provider_transaction_id"] == "tx-abc-123"
+        assert row["paid_at"]
+        assert row["period_start"]
+        assert row["period_end"]
+        assert len(row["commissions"]) == 1
+        commission = row["commissions"][0]
+        assert commission["amount"] == 500.0
+        assert commission["conversion"]["id"]
+        assert commission["conversion"]["offer"]["name"] == "Оффер Детали"
+        assert commission["conversion"]["amount"] == 5000.0
+        assert listed.json()["paid"] == 500.0
+    finally:
+        await partner.aclose()
+
+
+@pytest.mark.asyncio
+async def test_partner_paid_card_uses_paid_payouts_not_commissions(client, db):
+    await register_business(client, "paid-card-biz@example.com")
+    created = await client.post("/api/v1/business/offers", json=offer_payload(status="active"))
+    offer_id = created.json()["id"]
+    partner = await partner_with_access(offer_id, "paid-card-p@example.com")
+    try:
+        biz = (await db.execute(select(Business))).scalars().first()
+        partner_row = (await db.execute(select(PartnerProfile))).scalars().first()
+        await _add_available_commission(
+            db,
+            business_id=biz.id,
+            partner_id=partner_row.id,
+            offer_id=offer_id,
+            amount="998.00",
+        )
+        commission = (await db.execute(select(Commission).where(Commission.partner_id == partner_row.id))).scalar_one()
+        commission.status = CommissionStatus.PAID.value
+        await db.commit()
+
+        listed = await partner.get("/api/v1/partner/payouts")
+        assert listed.status_code == 200, listed.text
+        payload = listed.json()
+        assert payload["payouts"] == []
+        assert payload["paid"] == 0
+    finally:
+        await partner.aclose()
+
+
+@pytest.mark.asyncio
 async def test_financial_jobs_lock_conflict_is_quiet():
     from app.modules.finance.jobs import run_financial_jobs
     from tests.conftest import TestingSessionLocal

@@ -1,10 +1,11 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.admin.permissions import AdminPermission, require_permission
 from app.admin.queries import catalog, legal_entities as legal_entities_q, overview as overview_q, search as search_q, traffic, trace as trace_q
+from app.admin.queries import audit_events as audit_events_q
 from app.admin.schemas import ActionReason, LegalEntityRejectRequest, LegalEntityVerifyRequest
 from app.modules.finance.verification import LegalEntityVerificationService
 from app.admin.services.actions import AdminActionService
@@ -372,6 +373,36 @@ async def list_audit(
     )
 
 
+@audit_router.get("/audit/events")
+async def list_canonical_audit_events(
+    cursor: str | None = None,
+    limit: int = Query(50, ge=1, le=100),
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    event_type: str | None = None,
+    entity_type: str | None = None,
+    entity_id: int | None = None,
+    actor_type: str | None = None,
+    business_id: int | None = None,
+    request_id: str | None = None,
+    _admin=Depends(read),
+    db: AsyncSession = Depends(get_db),
+):
+    return await audit_events_q.list_audit_events(
+        db,
+        cursor=cursor,
+        limit=limit,
+        date_from=date_from,
+        date_to=date_to,
+        event_type=event_type,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        actor_type=actor_type,
+        business_id=business_id,
+        request_id=request_id,
+    )
+
+
 @actions_router.post("/businesses/{business_id}/suspend")
 async def suspend_business(
     business_id: str,
@@ -442,10 +473,13 @@ async def activate_site(
 async def pause_offer(
     offer_id: str,
     payload: ActionReason,
+    request: Request,
     admin=Depends(ops),
     db: AsyncSession = Depends(get_db),
 ):
-    offer = await AdminActionService(db).pause_offer(admin, parse_id(offer_id), payload.reason)
+    offer = await AdminActionService(db).pause_offer(
+        admin, parse_id(offer_id), payload.reason, request=request
+    )
     return {"id": offer.id, "status": offer.status}
 
 
@@ -453,10 +487,13 @@ async def pause_offer(
 async def activate_offer(
     offer_id: str,
     payload: ActionReason,
+    request: Request,
     admin=Depends(ops),
     db: AsyncSession = Depends(get_db),
 ):
-    offer = await AdminActionService(db).activate_offer(admin, parse_id(offer_id), payload.reason)
+    offer = await AdminActionService(db).activate_offer(
+        admin, parse_id(offer_id), payload.reason, request=request
+    )
     return {"id": offer.id, "status": offer.status}
 
 

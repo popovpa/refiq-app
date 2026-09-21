@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +14,8 @@ from app.modules.links.models import TrackingLink
 from app.core.exceptions import AppError, ForbiddenError, NotFoundError
 from app.modules.catalog.models import OfferCategory
 from app.modules.catalog.seed import ensure_catalog
+from app.modules.audit.context import audit_context_from_http
+from app.modules.offers.audit import record_offer_created, record_offer_mutations, snapshot_offer
 from app.modules.offers.models import Offer, OfferCommissionRule, OfferPartnerAccess
 from app.modules.offers.service import (
     apply_commission_update,
@@ -183,6 +185,7 @@ async def list_offers(
 @router.post("")
 async def create_offer(
     data: CreateOfferRequest,
+    request: Request,
     session_data: dict = Depends(require_business_role),
     db: AsyncSession = Depends(get_db),
 ):
@@ -244,6 +247,12 @@ async def create_offer(
     )
     await db.flush()
     await db.refresh(offer)
+    await record_offer_created(
+        db,
+        offer,
+        audit_context_from_http(request, session_data),
+        source_operation="offers.create",
+    )
     return offer_public_fields(offer)
 
 
@@ -370,11 +379,13 @@ async def get_offer(
 async def update_offer(
     offer_id: str,
     data: UpdateOfferRequest,
+    request: Request,
     session_data: dict = Depends(require_business_role),
     db: AsyncSession = Depends(get_db),
 ):
     business_id = parse_id(session_data["active_business_id"])
     offer = await _get_business_offer(db, offer_id, business_id)
+    before = snapshot_offer(offer)
     payload = data.model_dump(exclude_unset=True)
 
     if payload.get("status") and payload["status"] not in VALID_STATUSES:
@@ -426,6 +437,14 @@ async def update_offer(
         if product:
             product.url = product_url
 
+    await record_offer_mutations(
+        db,
+        offer,
+        before,
+        snapshot_offer(offer),
+        audit_context_from_http(request, session_data),
+        source_operation="offers.update",
+    )
     return {"status": "ok"}
 
 
