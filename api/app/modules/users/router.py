@@ -50,16 +50,40 @@ class ContextSwitchRequest(BaseModel):
 
 class AddBusinessRoleRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
-    website: str = Field(min_length=1, max_length=500)
+    website: str = Field(default="", max_length=500)
     country: str = Field(min_length=2, max_length=3)
-    category: str = Field(min_length=1, max_length=100)
+    category: str = Field(default="Other", max_length=100)
     work_email: EmailStr
     phone: str = Field(min_length=5, max_length=50)
     description: str | None = Field(default=None, max_length=1000)
+    subject_type: str | None = None
+    legal_name: str | None = None
+    inn: str | None = None
+    ogrn: str | None = None
+    ogrnip: str | None = None
+    legal_address: str | None = None
+    contact_name: str | None = Field(default=None, max_length=255)
+    job_title: str | None = Field(default=None, max_length=100)
+    candidate_id: str | None = None
 
 
 class AddPartnerRoleRequest(BaseModel):
+    subject_type: str = Field(min_length=1, max_length=32)
+    tax_status: str | None = None
     display_name: str | None = None
+    legal_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    middle_name: str | None = None
+    inn: str | None = None
+    ogrn: str | None = None
+    ogrnip: str | None = None
+    legal_address: str | None = None
+    country: str = Field(default="RU", min_length=2, max_length=3)
+    city: str | None = Field(default=None, max_length=100)
+    phone: str | None = Field(default=None, max_length=50)
+    contact_name: str | None = Field(default=None, max_length=255)
+    candidate_id: str | None = None
 
 
 async def _get_user_settings(db: AsyncSession, user_id: int) -> dict:
@@ -342,10 +366,12 @@ async def add_business_role(
                 business_id=business.id,
                 settings={
                     "website": data.website.strip(),
-                    "category": data.category.strip(),
+                    "category": (data.category or "Other").strip() or "Other",
                     "work_email": str(data.work_email).lower(),
                     "phone": data.phone.strip(),
                     "description": (data.description or "").strip() or None,
+                    "contact_name": (data.contact_name or "").strip() or None,
+                    "job_title": (data.job_title or "").strip() or None,
                 },
             )
         )
@@ -353,7 +379,28 @@ async def add_business_role(
             user.phone = data.phone.strip()
         await db.flush()
         from app.modules.finance.bootstrap import ensure_business_legal_entity
+        from app.modules.finance.onboarding_legal import legal_entity_from_onboarding
 
+        if data.candidate_id or data.inn:
+            entity = await legal_entity_from_onboarding(
+                db,
+                user_id=user.id,
+                context="business",
+                candidate_id=data.candidate_id,
+                payload={
+                    "subject_type": data.subject_type or "LEGAL_ENTITY",
+                    "legal_name": data.legal_name or data.name,
+                    "inn": data.inn,
+                    "ogrn": data.ogrn,
+                    "ogrnip": data.ogrnip,
+                    "legal_address": data.legal_address,
+                    "country": data.country,
+                },
+                partner=False,
+            )
+            business.legal_entity_id = entity.id
+            business.legal_name = entity.legal_name
+            business.country = entity.country or data.country.upper()
         await ensure_business_legal_entity(db, business)
         await db.refresh(user, ["roles"])
 
@@ -377,23 +424,53 @@ async def add_partner_role(
     existing_role = next((item for item in user.roles if item.role == "partner"), None)
 
     if not existing_role:
+        from app.modules.finance.bootstrap import ensure_partner_legal_entity
+        from app.modules.finance.onboarding_legal import legal_entity_from_onboarding
+
+        tax_status = data.tax_status
+        if data.subject_type == "INDIVIDUAL" and not tax_status:
+            tax_status = "NPD"
+        entity = await legal_entity_from_onboarding(
+            db,
+            user_id=user.id,
+            context="partner",
+            candidate_id=data.candidate_id,
+            payload={
+                "subject_type": data.subject_type,
+                "tax_status": tax_status,
+                "legal_name": data.legal_name,
+                "first_name": data.first_name or user.first_name,
+                "last_name": data.last_name or user.last_name,
+                "middle_name": data.middle_name,
+                "inn": data.inn,
+                "ogrn": data.ogrn,
+                "ogrnip": data.ogrnip,
+                "legal_address": data.legal_address,
+                "country": data.country,
+            },
+            partner=True,
+        )
         db.add(UserRole(user_id=user.id, role="partner", status="active"))
-        display_name = (data.display_name or f"{user.first_name or ''} {user.last_name or ''}").strip()
+        display_name = (data.display_name or data.legal_name or data.contact_name or f"{user.first_name or ''} {user.last_name or ''}").strip()
         if not display_name:
             display_name = user.email.split("@")[0]
         existing_profile = await db.execute(select(PartnerProfile).where(PartnerProfile.user_id == user.id))
-        if not existing_profile.scalar_one_or_none():
-            db.add(
-                PartnerProfile(
-                    user_id=user.id,
-                    display_name=display_name,
-                    status="active",
-                )
+        profile = existing_profile.scalar_one_or_none()
+        if not profile:
+            profile = PartnerProfile(
+                user_id=user.id,
+                display_name=display_name,
+                status="active",
+                legal_entity_id=entity.id,
             )
+            db.add(profile)
+        else:
+            profile.legal_entity_id = entity.id
+        if data.phone and not user.phone:
+            user.phone = data.phone.strip()
+        if data.city:
+            await _upsert_user_settings(db, user.id, {"city": data.city.strip(), "country": data.country.upper()})
         await db.flush()
-        from app.modules.finance.bootstrap import ensure_partner_legal_entity
-
-        profile = (await db.execute(select(PartnerProfile).where(PartnerProfile.user_id == user.id))).scalar_one()
         await ensure_partner_legal_entity(db, profile)
         await db.refresh(user, ["roles"])
 

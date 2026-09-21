@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     YANDEX_POSTBOX_ENDPOINT: str = "https://postbox.cloud.yandex.net"
     EMAIL_FROM: str = "no-reply@refiq.ru"
     EMAIL_FROM_NAME: str = "RefIQ"
+    EMAIL_SEND_TIMEOUT_SECONDS: float = 8.0
 
     AI_PROVIDER: str = "openai"
     AI_TEXT_PROVIDER: str = ""

@@ -23,8 +23,9 @@ import { api } from '@/shared/api/client';
 import { Button } from '@/shared/components/Button';
 import { Skeleton } from '@/shared/components/Skeleton';
 import { useToast } from '@/shared/components/Toast';
-import { rolesApi, type ActivateBusinessPayload } from '@/shared/api/roles';
-import { BecomeBusinessForm } from '@/shared/onboarding/BecomeBusinessForm';
+import { rolesApi, type ActivateBusinessPayload, type ActivatePartnerPayload } from '@/shared/api/roles';
+import { OnboardingWizard } from '@/shared/onboarding/OnboardingWizard';
+import { financeApiErrorText } from '@/shared/finance/messages';
 import { cn } from '@/shared/utils/cn';
 
 interface ProfileData {
@@ -183,6 +184,8 @@ export function ProfilePage() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
   const [businessOpen, setBusinessOpen] = useState(false);
+  const [partnerOpen, setPartnerOpen] = useState(false);
+  const [roleError, setRoleError] = useState('');
 
   const { data: profile, isLoading } = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -212,17 +215,18 @@ export function ProfilePage() {
       setBusinessOpen(false);
       addToast('Роль Бизнеса подключена', 'success');
     },
-    onError: () => addToast('Не удалось подключить роль. Попробуйте ещё раз.', 'error'),
+    onError: (err) => setRoleError(financeApiErrorText(err, 'Не удалось подключить роль. Попробуйте ещё раз.')),
   });
 
   const addPartnerRole = useMutation({
-    mutationFn: () => rolesApi.activatePartner(profile ? displayName(profile) : undefined),
+    mutationFn: (payload: ActivatePartnerPayload) => rolesApi.activatePartner(payload),
     onSuccess: (data) => {
       queryClient.setQueryData(['session'], data);
       queryClient.invalidateQueries({ queryKey: ['profile'] });
+      setPartnerOpen(false);
       addToast('Роль Партнёра подключена', 'success');
     },
-    onError: () => addToast('Не удалось подключить роль. Попробуйте ещё раз.', 'error'),
+    onError: (err) => setRoleError(financeApiErrorText(err, 'Не удалось подключить роль. Попробуйте ещё раз.')),
   });
 
   if (isLoading || !profile || !form) {
@@ -420,9 +424,11 @@ export function ProfilePage() {
               action={
                 !hasPartner
                   ? {
-                      label: addPartnerRole.isPending ? 'Подключение...' : 'Стать партнёром',
-                      onClick: () => addPartnerRole.mutate(),
-                      disabled: addPartnerRole.isPending,
+                      label: 'Стать партнёром',
+                      onClick: () => {
+                        setRoleError('');
+                        setPartnerOpen(true);
+                      },
                     }
                   : undefined
               }
@@ -486,17 +492,44 @@ export function ProfilePage() {
         />
       )}
       {businessOpen && (
-        <BecomeBusinessDrawer
-          defaults={{
-            website: form.website,
-            country: form.country,
-            work_email: profile.email,
-            phone: form.phone,
-          }}
+        <RoleOnboardingDrawer
+          title="Стать бизнесом"
           pending={addBusinessRole.isPending}
           onClose={() => setBusinessOpen(false)}
-          onSubmit={(payload) => addBusinessRole.mutate(payload)}
-        />
+        >
+          <OnboardingWizard
+            startAt="business"
+            userEmail={profile.email}
+            userName={displayName(profile)}
+            userPhone={form.phone || profile.phone || ''}
+            pending={addBusinessRole.isPending}
+            error={roleError}
+            onError={setRoleError}
+            onSaveBusiness={(payload) => addBusinessRole.mutate(payload)}
+            onSavePartner={() => undefined}
+            onBack={() => setBusinessOpen(false)}
+          />
+        </RoleOnboardingDrawer>
+      )}
+      {partnerOpen && (
+        <RoleOnboardingDrawer
+          title="Стать партнёром"
+          pending={addPartnerRole.isPending}
+          onClose={() => setPartnerOpen(false)}
+        >
+          <OnboardingWizard
+            startAt="partner"
+            userEmail={profile.email}
+            userName={displayName(profile)}
+            userPhone={form.phone || profile.phone || ''}
+            pending={addPartnerRole.isPending}
+            error={roleError}
+            onError={setRoleError}
+            onSaveBusiness={() => undefined}
+            onSavePartner={(payload) => addPartnerRole.mutate(payload)}
+            onBack={() => setPartnerOpen(false)}
+          />
+        </RoleOnboardingDrawer>
       )}
     </div>
   );
@@ -821,41 +854,28 @@ function AvatarModal({
   );
 }
 
-function BecomeBusinessDrawer({
-  defaults,
+function RoleOnboardingDrawer({
+  title,
   pending,
   onClose,
-  onSubmit,
+  children,
 }: {
-  defaults: {
-    website?: string;
-    country?: string;
-    work_email?: string;
-    phone?: string;
-  };
+  title: string;
   pending: boolean;
   onClose: () => void;
-  onSubmit: (payload: ActivateBusinessPayload) => void;
+  children: React.ReactNode;
 }) {
   return (
     <div className="fixed inset-0 z-50">
-      <div className="absolute inset-0 bg-foreground/30" onClick={onClose} />
-      <aside className="absolute inset-y-0 right-0 w-full max-w-md bg-card border-l border-border shadow-soft p-5 overflow-y-auto space-y-5">
+      <div className="absolute inset-0 bg-foreground/30" onClick={pending ? undefined : onClose} />
+      <aside className="absolute inset-y-0 right-0 w-full max-w-lg bg-card border-l border-border shadow-soft p-5 overflow-y-auto space-y-5">
         <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="ui-section-title">Стать бизнесом</h2>
-            <p className="text-sm text-muted-foreground mt-1">
-              Укажите данные компании. Оффер создадите отдельно в разделе «Офферы».
-            </p>
-          </div>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <h2 className="ui-section-title">{title}</h2>
+          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-foreground" disabled={pending}>
             <X size={18} />
           </button>
         </div>
-        <BecomeBusinessForm defaults={defaults} pending={pending} onSubmit={onSubmit} />
-        <Button variant="secondary" className="w-full" onClick={onClose} disabled={pending}>
-          Отмена
-        </Button>
+        {children}
       </aside>
     </div>
   );

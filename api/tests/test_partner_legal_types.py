@@ -77,7 +77,7 @@ async def test_partner_individual_unknown_is_rejected(client: AsyncClient, db: A
     assert response.status_code == 400, response.text
     assert response.json()["error"]["code"] == "PARTNER_INDIVIDUAL_REQUIRES_NPD"
     _, entity = await _partner_entity(db)
-    assert entity.tax_status == TaxStatus.UNKNOWN.value
+    assert entity.tax_status == TaxStatus.NPD.value
 
 
 @pytest.mark.asyncio
@@ -200,6 +200,9 @@ async def test_business_legal_rules_unchanged(client: AsyncClient):
 async def test_legacy_individual_is_not_auto_converted_to_npd(client: AsyncClient, db: AsyncSession):
     await register_user(client, "p-legacy@example.com")
     await become_partner(client, "Legacy Individual")
+    _, stored = await _partner_entity(db)
+    stored.tax_status = TaxStatus.UNKNOWN.value
+    await db.commit()
     current = await client.get("/api/v1/partner/legal-entity")
     assert current.status_code == 200
     entity = current.json()["legal_entity"]

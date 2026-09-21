@@ -112,7 +112,6 @@ class LegalEntityLookupService:
             raise lookup_error("LEGAL_ENTITY_LOOKUP_INVALID_REQUEST")
         if context not in {"business", "partner"}:
             raise lookup_error("LEGAL_ENTITY_LOOKUP_INVALID_REQUEST")
-        await self._require_context(user_id, context)
         await _rate_limit(f"legal_lookup:search:{user_id}", SEARCH_RATE_LIMIT)
         provider_name = current_lookup_provider_name()
         inc(f"legal_entity_lookup_requests_total.{provider_name}")
@@ -121,7 +120,7 @@ class LegalEntityLookupService:
             local = await self._local_candidates(user_id, query, context, subject_type)
             external: list[dict] = []
             if not _skip_external_lookup(context=context, subject_type=subject_type):
-                external = await self._external_candidates(query, context, local)
+                external = await self._external_candidates(query, context, local, subject_type)
             merged = self._merge(local, external)[:SEARCH_LIMIT]
             inc(f"legal_entity_lookup_success_total.{provider_name}")
             return {"items": merged, "lookup_enabled": not _skip_external_lookup(context=context, subject_type=subject_type)}
@@ -144,14 +143,8 @@ class LegalEntityLookupService:
             raise lookup_error("LEGAL_ENTITY_LOOKUP_INVALID_REQUEST")
         await self._require_context(user_id, target_context)
         await _rate_limit(f"legal_lookup:select:{user_id}", SELECT_RATE_LIMIT)
-        payload = decode_candidate(candidate_id)
         provider_name = current_lookup_provider_name()
-        if payload.get("src") == "local":
-            entity, reused = await self._select_local(user_id, payload, target_context)
-        elif payload.get("src") == "external":
-            entity, reused = await self._select_external(user_id, payload, target_context)
-        else:
-            raise lookup_error("LEGAL_ENTITY_LOOKUP_INVALID_REQUEST")
+        entity, reused = await self.materialize(user_id=user_id, candidate_id=candidate_id, context=target_context)
         await self._bind(user_id, entity, target_context, business_id)
         if reused:
             inc(f"legal_entity_lookup_reuse_total.{provider_name}")
@@ -170,6 +163,21 @@ class LegalEntityLookupService:
             "legal_entity": serialize_legal_entity(entity),
             "reused": reused,
         }
+
+    async def materialize(
+        self,
+        *,
+        user_id: int,
+        candidate_id: str,
+        context: str,
+    ) -> tuple[LegalEntity, bool]:
+        """Resolve or reuse a LegalEntity without binding it to a profile."""
+        payload = decode_candidate(candidate_id)
+        if payload.get("src") == "local":
+            return await self._select_local(user_id, payload, context)
+        if payload.get("src") == "external":
+            return await self._select_external(user_id, payload, context)
+        raise lookup_error("LEGAL_ENTITY_LOOKUP_INVALID_REQUEST")
 
     async def _require_context(self, user_id: int, context: str) -> None:
         if context == "partner":
@@ -233,12 +241,16 @@ class LegalEntityLookupService:
             )
         return items
 
-    async def _external_candidates(self, query: str, context: str, local: list[dict]) -> list[dict]:
+    async def _external_candidates(
+        self, query: str, context: str, local: list[dict], subject_type: str | None
+    ) -> list[dict]:
         provider = get_lookup_provider()
         found = await provider.search(query, context=context, limit=SEARCH_LIMIT)
         local_inns = {(item.get("inn"), item.get("subject_type")) for item in local}
         items: list[dict] = []
         for candidate in found:
+            if subject_type and candidate.subject_type != subject_type:
+                continue
             if not context_allows_subject(context, candidate.subject_type):
                 continue
             key = (candidate.inn, candidate.subject_type)

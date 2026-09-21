@@ -76,9 +76,22 @@ async def become_business(client: AsyncClient, **overrides):
     return response
 
 
-async def become_partner(client: AsyncClient, display_name: str | None = None):
-    body = {"display_name": display_name} if display_name else {}
-    response = await client.post("/api/v1/me/roles/partner", json=body)
+PARTNER_PAYLOAD = {
+    "subject_type": "INDIVIDUAL",
+    "tax_status": "NPD",
+    "country": "RU",
+    "first_name": "Test",
+    "last_name": "Partner",
+    "inn": "123456789012",
+    "phone": "+79991112233",
+}
+
+
+async def become_partner(client: AsyncClient, display_name: str | None = None, **overrides):
+    payload = {**PARTNER_PAYLOAD, **overrides}
+    if display_name:
+        payload["display_name"] = display_name
+    response = await client.post("/api/v1/me/roles/partner", json=payload)
     assert response.status_code == 200, response.text
     return response
 

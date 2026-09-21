@@ -21,12 +21,20 @@ export function LegalEntityLookup({
   onSelect,
   onManual,
   selecting,
+  heading,
+  description,
+  inputLabel = 'Название, ИНН или ОГРН',
+  searchingLabel = 'Ищем организацию…',
 }: {
   context: LookupContext;
-  subjectType: string;
+  subjectType?: string;
   onSelect: (candidate: LegalEntityCandidate) => void;
   onManual: () => void;
   selecting?: boolean;
+  heading?: string;
+  description?: string;
+  inputLabel?: string;
+  searchingLabel?: string;
 }) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +58,8 @@ export function LegalEntityLookup({
     }
     let cancelled = false;
     setState('searching');
-    const params = new URLSearchParams({ query: debounced, context, subject_type: subjectType });
+    const params = new URLSearchParams({ query: debounced, context });
+    if (subjectType) params.set('subject_type', subjectType);
     api
       .get<{ items: LegalEntityCandidate[] }>(`/legal-entity-lookup/search?${params}`)
       .then((data) => {
@@ -99,9 +108,15 @@ export function LegalEntityLookup({
 
   return (
     <div className="space-y-3">
+      {heading || description ? (
+        <div className="space-y-1">
+          {heading ? <h2 className="text-lg font-semibold tracking-tight">{heading}</h2> : null}
+          {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+        </div>
+      ) : null}
       <div className="relative">
         <label className="ui-label" htmlFor={`${listId}-input`}>
-          Найдите организацию или ИП
+          {inputLabel}
         </label>
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden />
@@ -114,7 +129,7 @@ export function LegalEntityLookup({
             aria-controls={listId}
             aria-autocomplete="list"
             aria-activedescendant={activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined}
-            placeholder="ИНН, ОГРН, название организации или ФИО ИП"
+            placeholder="Название, ИНН или ОГРН"
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
@@ -128,6 +143,7 @@ export function LegalEntityLookup({
             <LoaderCircle size={16} className="absolute right-3 top-1/2 -translate-y-1/2 animate-spin text-muted-foreground" />
           )}
         </div>
+        {state === 'searching' ? <p className="mt-1.5 text-xs text-muted-foreground">{searchingLabel}</p> : null}
         {open && (state === 'results' || state === 'empty' || state === 'error') && (
           <div
             id={listId}
@@ -174,8 +190,7 @@ export function LegalEntityLookup({
             )}
             {state === 'error' && (
               <div className="px-3 py-3 text-sm space-y-2">
-                <p className="font-medium">Не удалось выполнить поиск.</p>
-                <p className="text-muted-foreground">Попробуйте ещё раз или заполните данные вручную.</p>
+                <p className="font-medium">Не удалось выполнить поиск. Попробуйте ещё раз или заполните данные вручную.</p>
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" size="sm" variant="secondary" onClick={() => setDebounced(`${query} `)}>
                     Повторить

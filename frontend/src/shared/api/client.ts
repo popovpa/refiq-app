@@ -1,3 +1,5 @@
+import { clearClientSession, shouldClearSessionOnUnauthorized } from '@/shared/auth/sessionCache';
+
 const API_BASE = '/api/v1';
 
 interface RequestOptions {
@@ -42,6 +44,9 @@ class ApiClient {
     const response = await fetch(`${this.baseUrl}${endpoint}`, config);
 
     if (!response.ok) {
+      if (response.status === 401 && shouldClearSessionOnUnauthorized(endpoint)) {
+        clearClientSession();
+      }
       const payload = await response.json().catch(() => null);
       const rawMessage = payload?.error?.message ?? payload?.detail;
       const message =
@@ -92,6 +97,9 @@ class ApiClient {
       credentials: 'include',
     });
     if (!response.ok) {
+      if (response.status === 401 && shouldClearSessionOnUnauthorized(endpoint)) {
+        clearClientSession();
+      }
       const payload = await response.json().catch(() => null);
       const rawMessage = payload?.error?.message ?? payload?.detail;
       const message = typeof rawMessage === 'string' ? rawMessage : 'An error occurred';

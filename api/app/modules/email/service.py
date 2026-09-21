@@ -1,5 +1,11 @@
-from app.modules.email.dto import EmailMessage
+from __future__ import annotations
+
+import asyncio
+
+from app.core.config import settings
 from app.modules.email.deps import get_email_provider
+from app.modules.email.dto import EmailMessage
+from app.modules.email.errors import EmailSendError
 from app.modules.email.log import email_domain, log_email_error, logger
 from app.modules.email.provider import EmailProvider
 from app.modules.email.templates.account_confirmation import render_account_confirmation
@@ -27,7 +33,19 @@ class EmailService:
         to_domain = email_domain(message.to)
         logger.info("email_send_started", kind=kind, subject=message.subject, to_domain=to_domain)
         try:
-            await self.provider.send(message)
+            await asyncio.wait_for(
+                self.provider.send(message),
+                timeout=settings.EMAIL_SEND_TIMEOUT_SECONDS,
+            )
+        except TimeoutError as exc:
+            log_email_error(
+                "email_send_timeout",
+                exc,
+                kind=kind,
+                subject=message.subject,
+                to_domain=to_domain,
+            )
+            raise EmailSendError("Email send timed out") from exc
         except Exception as exc:
             log_email_error("email_send_failed", exc, kind=kind, subject=message.subject, to_domain=to_domain)
             raise

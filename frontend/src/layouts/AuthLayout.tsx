@@ -1,5 +1,5 @@
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
-import { useAuth } from '@/shared/hooks/useAuth';
+import { useFreshSession } from '@/shared/hooks/useAuth';
 import { postAuthPath } from '@/shared/layout/roleContext';
 import logoMark from '@/assets/brand/logo.png';
 import logoLabel from '@/assets/brand/label.png';
@@ -7,7 +7,7 @@ import logoLabel from '@/assets/brand/label.png';
 const ALLOW_AUTHENTICATED = new Set(['/forgot-password', '/reset-password', '/confirm-account']);
 
 export function AuthLayout() {
-  const { isAuthenticated, isLoading, session } = useAuth();
+  const { isAuthenticated, isLoading, session } = useFreshSession();
   const location = useLocation();
 
   if (isLoading) {

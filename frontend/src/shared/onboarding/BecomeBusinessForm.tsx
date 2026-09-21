@@ -1,28 +1,10 @@
 import { useState } from 'react';
 import { Button } from '@/shared/components/Button';
 import { cn } from '@/shared/utils/cn';
+import { ONBOARDING_COUNTRIES, BUSINESS_CATEGORIES } from '@/shared/onboarding/constants';
 import type { ActivateBusinessPayload } from '@/shared/api/roles';
 
-export const ONBOARDING_COUNTRIES = [
-  { value: 'RU', label: 'Россия' },
-  { value: 'KZ', label: 'Казахстан' },
-  { value: 'BY', label: 'Беларусь' },
-  { value: 'UA', label: 'Украина' },
-  { value: 'US', label: 'Соединённые Штаты' },
-  { value: 'GB', label: 'Великобритания' },
-  { value: 'DE', label: 'Германия' },
-  { value: 'TR', label: 'Турция' },
-];
-
-export const BUSINESS_CATEGORIES = [
-  'SaaS',
-  'Fintech',
-  'Education',
-  'E-commerce',
-  'Marketing',
-  'Услуги',
-  'Other',
-];
+export { ONBOARDING_COUNTRIES, BUSINESS_CATEGORIES };
 
 type FormState = {
   name: string;

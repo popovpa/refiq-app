@@ -21,22 +21,25 @@ export function useDateRange(): DateRangeState & {
 } {
   const [searchParams, setSearchParams] = useSearchParams();
   const timezone = useMemo(() => getBrowserTimeZone(), []);
+  const searchKey = searchParams.toString();
   const searchParamsRef = useRef(searchParams);
   searchParamsRef.current = searchParams;
+  const nowRef = useRef(new Date());
 
   const range = useMemo(
-    () => parseDateRangeSearch(searchParams, timezone),
-    [searchParams, timezone],
+    () => parseDateRangeSearch(new URLSearchParams(searchKey), timezone, nowRef.current),
+    [searchKey, timezone],
   );
 
   useEffect(() => {
-    if (dateRangeHasExplicitValue(searchParams)) return;
+    const params = new URLSearchParams(searchKey);
+    if (dateRangeHasExplicitValue(params)) return;
     const next = dateRangeSearchParams(
-      dateRangeFromPreset(DEFAULT_DATE_RANGE_PRESET, timezone),
-      searchParams,
+      dateRangeFromPreset(DEFAULT_DATE_RANGE_PRESET, timezone, nowRef.current),
+      params,
     );
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, timezone]);
+  }, [searchKey, setSearchParams, timezone]);
 
   const apply = useCallback(
     (state: DateRangeState) => {
@@ -62,10 +65,12 @@ export function useDateRange(): DateRangeState & {
     [apply, timezone],
   );
 
+  const apiParams = useMemo(() => dateRangeApiParams(range), [range]);
+
   return {
     ...range,
     setPreset,
     setCustomRange,
-    apiParams: dateRangeApiParams(range),
+    apiParams,
   };
 }

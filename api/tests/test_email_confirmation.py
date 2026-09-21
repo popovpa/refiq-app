@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
+import asyncio
+import time
 
 import pytest
 from httpx import AsyncClient
@@ -176,3 +178,30 @@ def test_confirmation_email_matches_landing_style():
     assert "#27503a" in html
     assert "border-radius:14px" in html
     assert "border-radius:999px" in html
+
+
+class _HangingEmailProvider:
+    async def send(self, message: EmailMessage) -> None:
+        await asyncio.sleep(30)
+
+
+@pytest.mark.asyncio
+async def test_register_returns_if_confirmation_email_hangs(client: AsyncClient, monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "EMAIL_SEND_TIMEOUT_SECONDS", 0.05)
+    set_email_provider(_HangingEmailProvider())
+    started = time.perf_counter()
+    try:
+        response = await client.post("/api/v1/auth/register", json={
+            "email": "email-timeout@example.com",
+            "password": "testpass123",
+            "first_name": "Time",
+            "last_name": "Out",
+        })
+    finally:
+        set_email_provider(None)
+    assert response.status_code == 200
+    assert time.perf_counter() - started < 2
+    user = await _load_user("email-timeout@example.com")
+    assert user.status == "new"
