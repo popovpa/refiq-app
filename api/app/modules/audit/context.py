@@ -22,6 +22,8 @@ class AuditContext:
     request_id: str | None = None
     ip_address: str | None = None
     user_agent: str | None = None
+    correlation_id: str | None = None
+    account_id: str | None = None
 
 
 def _optional_id(value) -> int | None:
@@ -31,6 +33,8 @@ def _optional_id(value) -> int | None:
 
 
 def _client_ip(request: Request) -> str | None:
+    # The socket peer is the client the API actually accepted. X-Forwarded-For is not
+    # read here: this service has no trusted-proxy allowlist for that header.
     if request.client and request.client.host:
         return request.client.host[:_MAX_IP]
     return None
@@ -67,6 +71,8 @@ def audit_context_from_request(
         request_id=_request_id(request),
         ip_address=_client_ip(request),
         user_agent=_user_agent(request),
+        correlation_id=_request_id(request),
+        account_id=str(business_id) if business_id is not None else None,
     )
 
 

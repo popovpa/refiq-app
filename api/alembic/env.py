@@ -18,6 +18,7 @@ from app.modules.partners.models import PartnerProfile, BusinessPartner
 from app.modules.products.models import Product
 from app.modules.offers.models import Offer, OfferCommissionRule, OfferPartnerAccess
 from app.modules.audit.models import AuditEvent
+from app.modules.audit.outbox.models import AuditOutboxEvent  # noqa: F401
 from app.modules.catalog.models import OfferVertical, OfferCategory
 from app.modules.campaigns.models import Campaign
 from app.modules.links.models import TrackingLink, Click

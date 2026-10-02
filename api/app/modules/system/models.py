@@ -38,16 +38,30 @@ class PartnerSettings(Base):
 
 
 class AuditLog(Base):
+    """Append-only audit log written by data-ingestor and direct API audit calls."""
+
     __tablename__ = "audit_logs"
 
     id: Mapped[int] = pk_column()
-    user_id: Mapped[int | None] = fk_column("users.id", nullable=True)
-    action: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
-    resource_type: Mapped[str | None] = mapped_column(String(50))
-    resource_id: Mapped[str | None] = mapped_column(String(50))
-    details: Mapped[dict | None] = mapped_column(JSONB)
-    ip_address: Mapped[str | None] = mapped_column(String(50))
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    event_id: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    schema_version: Mapped[int] = mapped_column(nullable=False)
+    event_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    ingested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    account_id: Mapped[str | None] = mapped_column(String(128))
+    actor_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_id: Mapped[str | None] = mapped_column(String(128))
+    entity_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_id: Mapped[str | None] = mapped_column(String(128))
+    correlation_id: Mapped[str | None] = mapped_column(String(128))
+    ip_address: Mapped[str | None] = mapped_column(String(64))
+    user_agent: Mapped[str | None] = mapped_column(String)
+    changed_fields: Mapped[dict | None] = mapped_column(JSONB)
+    before_data: Mapped[dict | None] = mapped_column(JSONB)
+    after_data: Mapped[dict | None] = mapped_column(JSONB)
+    metadata_: Mapped[dict | None] = mapped_column("metadata", JSONB)
 
 
 class OutboxEvent(Base):

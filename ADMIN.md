@@ -34,7 +34,8 @@ Both deployments share PostgreSQL and Alembic. Admin writes call domain services
 From `/Users/pavel/Projects/refiq/app` (or the compose root):
 
 ```bash
-docker compose up -d --build postgres redis api admin-api admin-front
+docker compose -f docker-compose.infra.yml up -d
+docker compose up -d --build
 ```
 
 Public UI remains `localhost:3000`. Admin binds to loopback only:

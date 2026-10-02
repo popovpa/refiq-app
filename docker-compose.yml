@@ -1,37 +1,9 @@
+# RefIQ application services.
+# Requires infra first: docker compose -f docker-compose.infra.yml up -d
+# Then: docker compose up --build
+name: refiq
+
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
-    restart: unless-stopped
-
-  redis:
-    image: redis:7-alpine
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - internal
-    restart: unless-stopped
-
   api:
     build:
       context: ./api
@@ -42,15 +14,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
       ASSET_STORAGE_DIR: /data/assets
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      AUDIT_KAFKA_TOPIC: audit-events
+      AUDIT_OUTBOX_ENABLED: "true"
     volumes:
       - assets_data:/data/assets
     ports:
       - "8000:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - internal
       - external
@@ -82,15 +52,13 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379/0
       ASSET_STORAGE_DIR: /data/assets
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      AUDIT_KAFKA_TOPIC: audit-events
+      AUDIT_OUTBOX_ENABLED: "true"
     volumes:
       - assets_data:/data/assets
     ports:
       - "127.0.0.1:8002:8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - internal
     restart: unless-stopped
@@ -109,12 +77,12 @@ services:
     restart: unless-stopped
 
 volumes:
-  postgres_data:
-  redis_data:
   assets_data:
+    name: app_assets_data
 
 networks:
   internal:
-    driver: bridge
+    external: true
+    name: refiq_internal
   external:
     driver: bridge

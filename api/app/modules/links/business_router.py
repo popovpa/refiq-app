@@ -247,19 +247,19 @@ async def get_destination_history(
             select(AuditLog)
             .where(
                 AuditLog.action == DESTINATION_UPDATED_ACTION,
-                AuditLog.resource_type == "tracking_link",
-                AuditLog.resource_id == str(link.id),
+                AuditLog.entity_type == "tracking_link",
+                AuditLog.entity_id == str(link.id),
             )
-            .order_by(AuditLog.created_at.desc())
+            .order_by(AuditLog.occurred_at.desc())
         )
     ).scalars().all()
     return {
         "items": [
             {
-                "created_at": row.created_at.isoformat() if row.created_at else None,
-                "destination_url": (row.details or {}).get("new"),
-                "previous_url": (row.details or {}).get("old"),
-                "actor_name": (row.details or {}).get("actor_name"),
+                "created_at": row.occurred_at.isoformat() if row.occurred_at else None,
+                "destination_url": (row.metadata_ or {}).get("new"),
+                "previous_url": (row.metadata_ or {}).get("old"),
+                "actor_name": (row.metadata_ or {}).get("actor_name"),
             }
             for row in rows
         ]

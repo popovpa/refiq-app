@@ -128,6 +128,7 @@ export const ACTOR_TYPE_LABELS: Record<string, string> = {
   USER: 'Пользователь',
   ADMIN: 'Админ',
   SYSTEM: 'Система',
+  SERVICE: 'Сервис',
   API_CLIENT: 'API-клиент',
   AI: 'AI',
 };

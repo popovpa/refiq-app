@@ -237,7 +237,7 @@ async def get_business(db: AsyncSession, business_id: int) -> dict:
     admin_activity = (
         await db.execute(
             select(AuditLog)
-            .where(AuditLog.resource_type.in_(["business", "offer", "site"]), AuditLog.resource_id.is_not(None))
+            .where(AuditLog.entity_type.in_(["business", "offer", "site"]), AuditLog.entity_id.is_not(None))
             .order_by(AuditLog.id.desc())
             .limit(8)
         )
@@ -282,9 +282,9 @@ async def get_business(db: AsyncSession, business_id: int) -> dict:
             {
                 "id": item.id,
                 "action": item.action,
-                "entity_type": item.resource_type,
-                "entity_id": item.resource_id,
-                "created_at": iso(item.created_at),
+                "entity_type": item.entity_type,
+                "entity_id": item.entity_id,
+                "created_at": iso(item.occurred_at),
             }
             for item in admin_activity
         ],

@@ -340,37 +340,69 @@ async def test_offer_mutation_rolls_back_when_audit_write_fails(client: AsyncCli
 
 
 @pytest.mark.asyncio
-async def test_admin_can_read_canonical_offer_events(client: AsyncClient, admin_client: AsyncClient):
-    body = await _create_offer(client, email="audit-admin-read@example.com")
-    await client.patch(f"/api/v1/business/offers/{body['id']}", json={"status": "active"})
+async def test_admin_reads_ingested_audit_logs(admin_client: AsyncClient):
+    from app.modules.system.models import AuditLog
+
     await _login(admin_client, email="audit-reader@refiq.ru")
+    now = datetime.now(timezone.utc)
+    async with TestingSessionLocal() as session:
+        session.add_all([
+            AuditLog(
+                event_id="evt_admin_status",
+                schema_version=1,
+                event_type="OFFER_STATUS_CHANGED",
+                action="STATUS_CHANGE",
+                occurred_at=now,
+                actor_type="USER",
+                actor_id="42",
+                account_id="7",
+                entity_type="OFFER",
+                entity_id="15",
+                request_id="req_status",
+                changed_fields={"status": {"before": "draft", "after": "active"}},
+                metadata_={"accountId": "7"},
+            ),
+            AuditLog(
+                event_id="evt_admin_update",
+                schema_version=1,
+                event_type="OFFER_UPDATED",
+                action="UPDATE",
+                occurred_at=now - timedelta(seconds=5),
+                actor_type="USER",
+                actor_id="42",
+                account_id="7",
+                entity_type="OFFER",
+                entity_id="15",
+                request_id="req_update",
+                changed_fields={"name": {"before": "Old", "after": "New"}},
+            ),
+        ])
+        await session.commit()
 
     listed = await admin_client.get(
         "/api/admin/v1/audit/events",
-        params={"entity_type": "OFFER", "entity_id": body["id"]},
+        params={"entity_type": "OFFER", "entity_id": "15"},
     )
     assert listed.status_code == 200, listed.text
     payload = listed.json()
     types = [item["event_type"] for item in payload["items"]]
-    assert OfferEventType.CREATED in types
-    assert OfferEventType.STATUS_CHANGED in types
-    assert all(item["entity_id"] == body["id"] for item in payload["items"])
+    assert types == ["OFFER_STATUS_CHANGED", "OFFER_UPDATED"]
+    assert all(item["entity_id"] == "15" for item in payload["items"])
+    assert payload["items"][0]["changes"]["status"]["after"] == "active"
+    assert payload["items"][0]["actor_id"] == "42"
+    assert payload["items"][0]["account_id"] == "7"
     assert payload["items"][0]["created_at"] >= payload["items"][-1]["created_at"]
 
     filtered = await admin_client.get(
         "/api/admin/v1/audit/events",
-        params={"event_type": OfferEventType.STATUS_CHANGED, "entity_type": "OFFER"},
+        params={"event_type": "OFFER_STATUS_CHANGED", "entity_type": "OFFER"},
     )
     assert filtered.status_code == 200
-    assert all(item["event_type"] == OfferEventType.STATUS_CHANGED for item in filtered.json()["items"])
+    assert all(item["event_type"] == "OFFER_STATUS_CHANGED" for item in filtered.json()["items"])
 
-    business_id = payload["items"][0]["actor_business_id"]
-    by_business = await admin_client.get("/api/admin/v1/audit/events", params={"business_id": business_id})
-    assert by_business.status_code == 200
-    assert all(
-        item["actor_business_id"] == business_id or (item.get("metadata") or {}).get("business_id") == business_id
-        for item in by_business.json()["items"]
-    )
+    by_account = await admin_client.get("/api/admin/v1/audit/events", params={"business_id": "7"})
+    assert by_account.status_code == 200
+    assert all(item["account_id"] == "7" for item in by_account.json()["items"])
 
     since = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
     dated = await admin_client.get("/api/admin/v1/audit/events", params={"date_from": since, "actor_type": "USER"})

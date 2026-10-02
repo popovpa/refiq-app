@@ -16,10 +16,12 @@ logger = structlog.get_logger()
 async def lifespan(app: FastAPI):
     from app.modules.ai.jobs import has_test_job_runner
     from app.modules.finance.jobs import run_financial_jobs
+    from app.workers.outbox_publisher import shutdown_outbox_publisher, start_outbox_publisher
 
     stop = asyncio.Event()
     task = None
     finance_task = None
+    outbox_worker = None
     if not has_test_job_runner():
         async def _promo_loop():
             from app.modules.ai.application.creative.promo_worker import pump_queued_runs
@@ -47,8 +49,10 @@ async def lifespan(app: FastAPI):
 
         task = asyncio.create_task(_promo_loop())
         finance_task = asyncio.create_task(_finance_loop())
+        outbox_worker = start_outbox_publisher()
     yield
     stop.set()
+    await shutdown_outbox_publisher(outbox_worker)
     for item in (task, finance_task):
         if item:
             item.cancel()

@@ -321,8 +321,10 @@ function CanonicalAuditTable() {
           <option value="USER">Пользователь</option>
           <option value="ADMIN">Админ</option>
           <option value="SYSTEM">Система</option>
+          <option value="SERVICE">Сервис</option>
+          <option value="API_CLIENT">API-клиент</option>
         </select>
-        <input className="ui-input h-8 w-32" placeholder="Business ID" defaultValue={get('business_id')} onBlur={(e) => set({ business_id: e.target.value })} />
+        <input className="ui-input h-8 w-32" placeholder="Account ID" defaultValue={get('business_id')} onBlur={(e) => set({ business_id: e.target.value })} />
         <input className="ui-input h-8 w-48" placeholder="Request ID" defaultValue={get('request_id')} onBlur={(e) => set({ request_id: e.target.value })} />
       </div>
       <QueryState loading={query.isLoading} error={query.error} empty={!items.length}>
@@ -338,12 +340,12 @@ function CanonicalAuditTable() {
           ]}
           rows={items.map((row: any) => ({
             id: row.id,
-            time: formatDateTime(row.created_at),
+            time: formatDateTime(row.occurred_at || row.created_at),
             event: auditEventLabel(row.event_type),
             entity: entityTypeLabel(row.entity_type),
             entityId: <CopyId value={row.entity_id} />,
             actor: actorSummary(row),
-            business: row.actor_business_id ?? row.metadata?.business_id ?? '—',
+            business: row.account_id || '—',
             changes: changeSummary(row.changes),
             raw: row,
           }))}
@@ -364,8 +366,7 @@ function CanonicalAuditTable() {
 
 function actorSummary(row: any) {
   const kind = actorTypeLabel(row.actor_type);
-  const id = row.actor_user_id ?? row.actor_admin_id;
-  return id ? `${kind} #${id}` : kind;
+  return row.actor_id ? `${kind} #${row.actor_id}` : kind;
 }
 
 function formatChangeValue(value: unknown) {
@@ -393,16 +394,16 @@ function AuditEventModal({ event, onClose }: { event: any; onClose: () => void }
           </button>
         </div>
         <Kv label="Событие">{auditEventLabel(event.event_type)}</Kv>
-        <Kv label="Дата и время">{formatDateTime(event.created_at)}</Kv>
+        <Kv label="Дата и время">{formatDateTime(event.occurred_at || event.created_at)}</Kv>
+        <Kv label="Действие">{event.action || '—'}</Kv>
         <Kv label="Сущность">{entityTypeLabel(event.entity_type)}</Kv>
         <Kv label="ID сущности"><CopyId value={event.entity_id} /></Kv>
         <Kv label="Инициатор">{actorSummary(event)}</Kv>
-        <Kv label="Business">{event.actor_business_id ?? event.metadata?.business_id ?? '—'}</Kv>
+        <Kv label="Account">{event.account_id || '—'}</Kv>
         <Kv label="Request ID"><CopyId value={event.request_id} /></Kv>
+        <Kv label="Correlation ID"><CopyId value={event.correlation_id} /></Kv>
         <Kv label="IP">{event.ip_address || '—'}</Kv>
         <Kv label="User-Agent">{event.user_agent || '—'}</Kv>
-        <Kv label="Операция">{event.source_operation || '—'}</Kv>
-        <Kv label="Причина">{event.reason || '—'}</Kv>
         <Kv label="Изменения">
           <div className="space-y-1">
             {event.changes && Object.keys(event.changes).length

@@ -381,9 +381,9 @@ async def list_canonical_audit_events(
     date_to: datetime | None = None,
     event_type: str | None = None,
     entity_type: str | None = None,
-    entity_id: int | None = None,
+    entity_id: str | None = None,
     actor_type: str | None = None,
-    business_id: int | None = None,
+    business_id: str | None = None,
     request_id: str | None = None,
     _admin=Depends(read),
     db: AsyncSession = Depends(get_db),
@@ -398,7 +398,7 @@ async def list_canonical_audit_events(
         entity_type=entity_type,
         entity_id=entity_id,
         actor_type=actor_type,
-        business_id=business_id,
+        account_id=business_id,
         request_id=request_id,
     )
 

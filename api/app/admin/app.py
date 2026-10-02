@@ -22,7 +22,11 @@ from app.core.middleware import RequestIDMiddleware, StructuredLoggingMiddleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.workers.outbox_publisher import shutdown_outbox_publisher, start_outbox_publisher
+
+    outbox_worker = start_outbox_publisher()
     yield
+    await shutdown_outbox_publisher(outbox_worker)
     await engine.dispose()
 
 

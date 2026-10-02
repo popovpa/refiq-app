@@ -1,3 +1,6 @@
+import uuid
+from datetime import datetime, timezone
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.system.models import AuditLog
@@ -24,12 +27,17 @@ async def write_audit_log(
     ip_address: str | None = None,
 ) -> AuditLog:
     entry = AuditLog(
-        user_id=user_id,
-        action=action,
-        resource_type=resource_type,
-        resource_id=resource_id,
-        details=details,
+        event_id=f"evt_{uuid.uuid4().hex}",
+        schema_version=1,
+        event_type=action,
+        action=action[:64],
+        occurred_at=datetime.now(timezone.utc),
+        actor_type="USER" if user_id is not None else "SYSTEM",
+        actor_id=str(user_id) if user_id is not None else None,
+        entity_type=resource_type or "UNKNOWN",
+        entity_id=resource_id or "-",
         ip_address=ip_address,
+        metadata_=details,
     )
     db.add(entry)
     return entry

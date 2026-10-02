@@ -2,6 +2,7 @@ class ActorType:
     USER = "USER"
     ADMIN = "ADMIN"
     SYSTEM = "SYSTEM"
+    SERVICE = "SERVICE"
     API_CLIENT = "API_CLIENT"
     AI = "AI"
 

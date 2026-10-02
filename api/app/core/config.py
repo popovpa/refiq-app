@@ -96,6 +96,19 @@ class Settings(BaseSettings):
     LEGAL_ENTITY_LOOKUP_SEARCH_TIMEOUT_SECONDS: float = 2.5
     LEGAL_ENTITY_LOOKUP_RESOLVE_TIMEOUT_SECONDS: float = 6.0
 
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_CLIENT_ID: str = "refiq-api"
+
+    AUDIT_OUTBOX_ENABLED: bool = True
+    AUDIT_KAFKA_TOPIC: str = "audit-events"
+    AUDIT_OUTBOX_BATCH_SIZE: int = 100
+    AUDIT_OUTBOX_POLL_INTERVAL: float = 2.0
+    AUDIT_OUTBOX_MAX_RETRIES: int = 10
+    AUDIT_OUTBOX_RETRY_BASE_DELAY: float = 1.0
+    AUDIT_OUTBOX_PUBLISH_TIMEOUT: float = 10.0
+    AUDIT_OUTBOX_SHUTDOWN_TIMEOUT: float = 10.0
+    AUDIT_OUTBOX_RETENTION_SECONDS: int = 0
+
     @property
     def s3_enabled(self) -> bool:
         return bool(self.S3_ACCESS_KEY_ID and self.S3_SECRET_ACCESS_KEY)
