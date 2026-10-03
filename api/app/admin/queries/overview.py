@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -31,6 +32,20 @@ def _health(last_at: datetime | None, *, configured: bool | None = None) -> dict
     if age <= timedelta(days=7):
         return {"status": "degraded", "label": "Деградация", "last_at": iso(last_at)}
     return {"status": "no_activity", "label": "Нет активности", "last_at": iso(last_at)}
+
+
+async def _email_sending_health() -> dict:
+    base = (settings.MAIL_SERVICE_URL or "").strip().rstrip("/")
+    if not base:
+        return {"status": "no_activity", "label": "Не настроено", "last_at": None}
+    try:
+        async with httpx.AsyncClient(timeout=1.5) as client:
+            response = await client.get(f"{base}/ready")
+        if response.status_code == 200 and response.json().get("status") == "ready":
+            return {"status": "healthy", "label": "В норме", "last_at": None}
+    except Exception:
+        pass
+    return {"status": "degraded", "label": "Деградация", "last_at": None}
 
 
 async def overview(db: AsyncSession) -> dict:
@@ -103,11 +118,6 @@ async def overview(db: AsyncSession) -> dict:
             "tracking_redirects": _health(last_click),
             "clickstream_receiving": _health(last_sdk),
             "postback_receiving": _health(last_postback),
-            "email_sending": _health(
-                None,
-                configured=settings.postbox_enabled,
-            )
-            if not settings.postbox_enabled
-            else {"status": "healthy", "label": "В норме", "last_at": None},
+            "email_sending": await _email_sending_health(),
         },
     }

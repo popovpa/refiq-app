@@ -110,9 +110,11 @@ from app.modules.finance.partner_router import router as finance_partner_router
 from app.modules.finance.webhooks import router as finance_webhook_router
 from app.modules.finance.test_router import router as finance_test_router
 from app.modules.finance.providers.factory import validate_live_startup
+from app.mail_events.enqueue import validate_mail_event_config
 from app.modules.finance.lookup.router import router as legal_entity_lookup_router
 
 validate_live_startup()
+validate_mail_event_config()
 
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(users_router, prefix="/api/v1/me", tags=["users"])

@@ -1,49 +1,23 @@
 from datetime import datetime, timedelta, timezone
 from urllib.parse import parse_qs, urlparse
-import asyncio
-import time
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from app.modules.audit.outbox.models import AuditOutboxEvent
 from app.modules.auth.email_confirmation import INVALID_TOKEN_MESSAGE
 from app.modules.auth.models import EmailConfirmationToken
 from app.modules.auth.password_reset import generate_reset_token, hash_reset_token
-from app.modules.email.deps import set_email_provider
-from app.modules.email.dto import EmailMessage
-from app.modules.email.templates.account_confirmation import render_account_confirmation
 from app.modules.users.models import User
 from tests.conftest import TestingSessionLocal
-
-
-class RecordingEmailProvider:
-    def __init__(self):
-        self.messages: list[EmailMessage] = []
-
-    async def send(self, message: EmailMessage) -> None:
-        self.messages.append(message)
-
-
-@pytest.fixture
-def emails():
-    provider = RecordingEmailProvider()
-    set_email_provider(provider)
-    yield provider
-    set_email_provider(None)
+from tests.mail_outbox import assert_no_plaintext, decrypt_mail, mail_events
 
 
 def _token_from_url(url: str) -> str:
     values = parse_qs(urlparse(url).query).get("token") or []
-    assert values, f"token missing in {url}"
+    assert values, "token missing in confirmation url"
     return values[0]
-
-
-def _confirm_url(message: EmailMessage) -> str:
-    for line in message.text.splitlines():
-        if "/confirm-account?token=" in line:
-            return line.strip()
-    raise AssertionError("confirm URL not found in email")
 
 
 async def _load_user(email: str) -> User:
@@ -58,8 +32,18 @@ async def _load_tokens():
         return list((await session.execute(select(EmailConfirmationToken))).scalars().all())
 
 
+async def _confirmation(email: str) -> tuple[User, dict, str]:
+    user = await _load_user(email)
+    events = await mail_events(user.id, "ACCOUNT_CONFIRMATION")
+    assert len(events) == 1
+    payload = events[0].payload
+    sensitive = decrypt_mail(payload)
+    url = sensitive["variables"]["confirmUrl"]
+    return user, payload, _token_from_url(url)
+
+
 @pytest.mark.asyncio
-async def test_register_creates_new_user_and_sends_email(client: AsyncClient, emails):
+async def test_register_creates_user_token_and_encrypted_mail_event(client: AsyncClient):
     response = await client.post("/api/v1/auth/register", json={
         "email": "confirm-me@example.com",
         "password": "testpass123",
@@ -68,21 +52,32 @@ async def test_register_creates_new_user_and_sends_email(client: AsyncClient, em
     })
     assert response.status_code == 200
     assert "refiq_session" not in response.cookies
-    user = await _load_user("confirm-me@example.com")
+    user, payload, token = await _confirmation("confirm-me@example.com")
     assert user.status == "new"
     assert user.email_verified_at is None
-    assert len(emails.messages) == 1
-    assert emails.messages[0].to == "confirm-me@example.com"
-    assert "Подтвердить аккаунт" in emails.messages[0].html
-    token = _token_from_url(_confirm_url(emails.messages[0]))
+    assert payload["templateCode"] == "ACCOUNT_CONFIRMATION"
+    assert payload["templateVersion"] == 1
+    assert payload["eventType"] == "MAIL_SEND_REQUESTED"
+    assert payload["idempotencyKey"].startswith("account-confirmation:")
     rows = await _load_tokens()
     assert len(rows) == 1
+    assert payload["idempotencyKey"] == f"account-confirmation:{rows[0].id}"
     assert token not in rows[0].token_hash
     assert rows[0].token_hash == hash_reset_token(token)
+    events = await mail_events(user.id, "ACCOUNT_CONFIRMATION")
+    assert events[0].topic == "mail-events"
+    assert events[0].event_id == payload["eventId"]
+    assert events[0].partition_key == str(user.id)
+    assert events[0].published_at is None
+    sensitive = decrypt_mail(payload)
+    assert sensitive["recipient"]["email"] == "confirm-me@example.com"
+    assert sensitive["variables"]["ttlHours"] == 24
+    assert token in sensitive["variables"]["confirmUrl"]
+    assert_no_plaintext(payload, "confirm-me@example.com", token, sensitive["variables"]["confirmUrl"])
 
 
 @pytest.mark.asyncio
-async def test_login_rejected_until_confirmed(client: AsyncClient, emails):
+async def test_login_rejected_until_confirmed(client: AsyncClient):
     await client.post("/api/v1/auth/register", json={
         "email": "pending@example.com",
         "password": "testpass123",
@@ -98,14 +93,14 @@ async def test_login_rejected_until_confirmed(client: AsyncClient, emails):
 
 
 @pytest.mark.asyncio
-async def test_confirm_email_activates_account_without_login(client: AsyncClient, emails):
+async def test_confirm_email_activates_account_without_login(client: AsyncClient):
     await client.post("/api/v1/auth/register", json={
         "email": "activate@example.com",
         "password": "testpass123",
         "first_name": "Act",
         "last_name": "Ive",
     })
-    token = _token_from_url(_confirm_url(emails.messages[0]))
+    _user, _payload, token = await _confirmation("activate@example.com")
     confirmed = await client.post("/api/v1/auth/confirm-email", json={"token": token})
     assert confirmed.status_code == 200
     assert confirmed.json()["message"] == "Аккаунт подтверждён"
@@ -118,14 +113,14 @@ async def test_confirm_email_activates_account_without_login(client: AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_confirm_email_login_creates_session(client: AsyncClient, emails):
+async def test_confirm_email_login_creates_session(client: AsyncClient):
     await client.post("/api/v1/auth/register", json={
         "email": "autologin@example.com",
         "password": "testpass123",
         "first_name": "Auto",
         "last_name": "Login",
     })
-    token = _token_from_url(_confirm_url(emails.messages[0]))
+    _user, _payload, token = await _confirmation("autologin@example.com")
     await client.post("/api/v1/auth/confirm-email", json={"token": token})
     entered = await client.post("/api/v1/auth/confirm-email/login", json={"token": token})
     assert entered.status_code == 200
@@ -165,43 +160,23 @@ async def test_confirm_email_invalid_and_expired_tokens(client: AsyncClient):
     assert expired.json()["error"]["message"] == INVALID_TOKEN_MESSAGE
 
 
-def test_confirmation_email_matches_landing_style():
-    url = "https://app.refiq.ru/confirm-account?token=exampletoken"
-    subject, text, html = render_account_confirmation(confirm_url=url, ttl_hours=24)
-    assert "Подтвердите аккаунт" in subject
-    assert "Подтвердить аккаунт" in text
-    assert url in text
-    assert url in html
-    assert "<script" not in html.lower()
-    assert "#f2f5ef" in html
-    assert "#3d6b50" in html
-    assert "#27503a" in html
-    assert "border-radius:14px" in html
-    assert "border-radius:999px" in html
-
-
-class _HangingEmailProvider:
-    async def send(self, message: EmailMessage) -> None:
-        await asyncio.sleep(30)
-
-
 @pytest.mark.asyncio
-async def test_register_returns_if_confirmation_email_hangs(client: AsyncClient, monkeypatch):
-    from app.core.config import settings
-
-    monkeypatch.setattr(settings, "EMAIL_SEND_TIMEOUT_SECONDS", 0.05)
-    set_email_provider(_HangingEmailProvider())
-    started = time.perf_counter()
-    try:
-        response = await client.post("/api/v1/auth/register", json={
-            "email": "email-timeout@example.com",
-            "password": "testpass123",
-            "first_name": "Time",
-            "last_name": "Out",
-        })
-    finally:
-        set_email_provider(None)
+async def test_register_commits_user_and_mail_event_together(client: AsyncClient):
+    response = await client.post("/api/v1/auth/register", json={
+        "email": "atomic-confirm@example.com",
+        "password": "testpass123",
+        "first_name": "Atom",
+        "last_name": "Ic",
+    })
     assert response.status_code == 200
-    assert time.perf_counter() - started < 2
-    user = await _load_user("email-timeout@example.com")
-    assert user.status == "new"
+    user = await _load_user("atomic-confirm@example.com")
+    async with TestingSessionLocal() as session:
+        stored_user = await session.get(User, user.id)
+        outbox = (
+            await session.execute(
+                select(AuditOutboxEvent).where(AuditOutboxEvent.aggregate_id == str(user.id))
+            )
+        ).scalar_one()
+    assert stored_user is not None
+    assert outbox.event_type == "MAIL_SEND_REQUESTED"
+    assert outbox.payload["eventId"] == outbox.event_id

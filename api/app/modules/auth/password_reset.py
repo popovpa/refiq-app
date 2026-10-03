@@ -5,7 +5,6 @@ import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 
-import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,11 +12,9 @@ from app.core.config import settings
 from app.core.exceptions import AppError
 from app.core.security import hash_password
 from app.core.sessions import delete_all_user_sessions
+from app.mail_events.enqueue import enqueue_mail_command
 from app.modules.auth.models import PasswordResetToken
-from app.modules.email.service import EmailService
 from app.modules.users.models import User
-
-logger = structlog.get_logger()
 
 TOKEN_BYTES = 32
 TTL = timedelta(minutes=30)
@@ -58,11 +55,10 @@ def _as_utc(value: datetime) -> datetime:
 
 
 class PasswordResetService:
-    def __init__(self, db: AsyncSession, email: EmailService | None = None):
+    def __init__(self, db: AsyncSession):
         self.db = db
-        self.email = email or EmailService()
 
-    async def request_reset(self, email: str) -> dict:
+    async def request_reset(self, email: str, *, request_id: str | None = None) -> dict:
         normalized = email.lower().strip()
         await self._enforce_rate_limit(normalized)
 
@@ -91,15 +87,20 @@ class PasswordResetService:
         )
         self.db.add(token)
         await self.db.flush()
-
-        try:
-            await self.email.send_password_reset(
-                to=user.email,
-                reset_url=_reset_url(plaintext),
-                ttl_minutes=int(TTL.total_seconds() // 60),
-            )
-        except Exception:
-            logger.exception("password_reset_email_failed", user_id=user.id)
+        await enqueue_mail_command(
+            self.db,
+            template_code="PASSWORD_RESET",
+            template_version=1,
+            idempotency_key=f"password-reset:{token.id}",
+            user_id=user.id,
+            recipient_email=user.email,
+            variables={
+                "resetUrl": _reset_url(plaintext),
+                "ttlMinutes": int(TTL.total_seconds() // 60),
+            },
+            request_id=request_id,
+            correlation_id=request_id,
+        )
 
         return GENERIC_OK
 

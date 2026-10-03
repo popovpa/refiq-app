@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,12 +9,10 @@ from app.core.config import settings
 from app.core.exceptions import AppError
 from app.core.security import generate_session_id
 from app.core.sessions import create_session
+from app.mail_events.enqueue import enqueue_mail_command
 from app.modules.auth.models import EmailConfirmationToken
 from app.modules.auth.password_reset import _as_utc, generate_reset_token, hash_reset_token
-from app.modules.email.service import EmailService
 from app.modules.users.models import User
-
-logger = structlog.get_logger()
 
 TTL = timedelta(hours=24)
 TTL_HOURS = 24
@@ -28,11 +25,10 @@ def _confirm_url(token: str) -> str:
 
 
 class EmailConfirmationService:
-    def __init__(self, db: AsyncSession, email: EmailService | None = None):
+    def __init__(self, db: AsyncSession):
         self.db = db
-        self.email = email or EmailService()
 
-    async def issue(self, user: User) -> None:
+    async def issue(self, user: User, *, request_id: str | None = None) -> None:
         now = datetime.now(timezone.utc)
         await self.db.execute(
             update(EmailConfirmationToken)
@@ -44,22 +40,24 @@ class EmailConfirmationService:
             .execution_options(synchronize_session=False)
         )
         plaintext = generate_reset_token()
-        self.db.add(
-            EmailConfirmationToken(
-                user_id=user.id,
-                token_hash=hash_reset_token(plaintext),
-                expires_at=now + TTL,
-            )
+        token = EmailConfirmationToken(
+            user_id=user.id,
+            token_hash=hash_reset_token(plaintext),
+            expires_at=now + TTL,
         )
+        self.db.add(token)
         await self.db.flush()
-        try:
-            await self.email.send_account_confirmation(
-                to=user.email,
-                confirm_url=_confirm_url(plaintext),
-                ttl_hours=TTL_HOURS,
-            )
-        except Exception:
-            logger.exception("account_confirmation_email_failed", user_id=user.id)
+        await enqueue_mail_command(
+            self.db,
+            template_code="ACCOUNT_CONFIRMATION",
+            template_version=1,
+            idempotency_key=f"account-confirmation:{token.id}",
+            user_id=user.id,
+            recipient_email=user.email,
+            variables={"confirmUrl": _confirm_url(plaintext), "ttlHours": TTL_HOURS},
+            request_id=request_id,
+            correlation_id=request_id,
+        )
 
     async def confirm(self, token: str) -> dict:
         _row, user = await self._valid_token_and_user(token)

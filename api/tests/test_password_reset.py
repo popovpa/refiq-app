@@ -1,6 +1,5 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -12,62 +11,22 @@ from app.modules.auth.models import PasswordResetToken
 from app.modules.auth.password_reset import (
     GENERIC_OK,
     INVALID_TOKEN_MESSAGE,
+    RATE_LIMIT_MAX,
     generate_reset_token,
     hash_reset_token,
 )
-from app.modules.email.deps import set_email_provider
-from app.modules.email.dto import EmailMessage
-from app.modules.email.errors import EmailSendError
-from app.modules.email.templates.password_reset import render_password_reset
 from app.modules.users.models import User
 from tests.conftest import TestingSessionLocal
 from tests.helpers import register_user
+from tests.mail_outbox import assert_no_plaintext, decrypt_mail, mail_events
 
 OK_MESSAGE = GENERIC_OK["message"]
 
 
-class RecordingEmailProvider:
-    def __init__(self):
-        self.messages: list[EmailMessage] = []
-
-    async def send(self, message: EmailMessage) -> None:
-        self.messages.append(message)
-
-
-class FailingEmailProvider:
-    async def send(self, message: EmailMessage) -> None:
-        raise EmailSendError("Failed to send email")
-
-
-@pytest.fixture
-def emails():
-    provider = RecordingEmailProvider()
-    set_email_provider(provider)
-    yield provider
-    set_email_provider(None)
-
-
 def _token_from_url(url: str) -> str:
     values = parse_qs(urlparse(url).query).get("token") or []
-    assert values, f"token missing in {url}"
+    assert values, "token missing in reset url"
     return values[0]
-
-
-def _reset_url(message: EmailMessage) -> str:
-    for line in message.text.splitlines():
-        if "/reset-password?token=" in line:
-            return line.strip()
-    raise AssertionError("reset URL not found in email")
-
-
-def _reset_messages(emails) -> list[EmailMessage]:
-    return [message for message in emails.messages if "/reset-password?token=" in message.text]
-
-
-def _latest_reset_url(emails) -> str:
-    messages = _reset_messages(emails)
-    assert messages, "reset URL not found in email"
-    return _reset_url(messages[-1])
 
 
 async def _load_tokens():
@@ -83,8 +42,17 @@ async def _load_user(email: str) -> User:
         return user
 
 
+async def _reset_token(email: str) -> tuple[dict, str]:
+    user = await _load_user(email)
+    events = await mail_events(user.id, "PASSWORD_RESET")
+    assert events, "password reset mail event was not created"
+    payload = events[-1].payload
+    sensitive = decrypt_mail(payload)
+    return payload, _token_from_url(sensitive["variables"]["resetUrl"])
+
+
 @pytest.mark.asyncio
-async def test_forgot_password_known_and_unknown_email_match(client: AsyncClient, emails):
+async def test_forgot_password_known_and_unknown_email_match(client: AsyncClient):
     await register_user(client, "reset-known@example.com")
     existing = await client.post(
         "/api/v1/auth/forgot-password",
@@ -97,49 +65,64 @@ async def test_forgot_password_known_and_unknown_email_match(client: AsyncClient
     assert existing.status_code == 200
     assert missing.status_code == 200
     assert existing.json() == missing.json() == GENERIC_OK
-    reset_mail = _reset_messages(emails)
-    assert len(reset_mail) == 1
-    assert reset_mail[0].to == "reset-known@example.com"
+    user = await _load_user("reset-known@example.com")
+    events = await mail_events(user.id, "PASSWORD_RESET")
+    assert len(events) == 1
+    payload = events[0].payload
+    sensitive = decrypt_mail(payload)
+    assert sensitive["recipient"]["email"] == "reset-known@example.com"
+    assert sensitive["variables"]["ttlMinutes"] == 30
+    assert_no_plaintext(
+        payload,
+        "reset-known@example.com",
+        sensitive["variables"]["resetUrl"],
+        _token_from_url(sensitive["variables"]["resetUrl"]),
+    )
+    assert payload["templateCode"] == "PASSWORD_RESET"
+    assert events[0].topic == "mail-events"
+    assert events[0].event_id == payload["eventId"]
 
 
 @pytest.mark.asyncio
-async def test_forgot_password_unknown_email_does_not_create_token(client: AsyncClient, emails):
+async def test_forgot_password_unknown_email_does_not_create_token(client: AsyncClient):
     response = await client.post(
         "/api/v1/auth/forgot-password",
         json={"email": "ghost@example.com"},
     )
     assert response.status_code == 200
     assert response.json()["message"] == OK_MESSAGE
-    assert emails.messages == []
     assert await _load_tokens() == []
 
 
 @pytest.mark.asyncio
-async def test_reset_token_hashed_with_expiration(client: AsyncClient, emails):
+async def test_reset_token_hashed_with_expiration(client: AsyncClient):
     await register_user(client, "hashed@example.com")
     await client.post("/api/v1/auth/forgot-password", json={"email": "hashed@example.com"})
-    token = _token_from_url(_latest_reset_url(emails))
+    payload, token = await _reset_token("hashed@example.com")
     rows = await _load_tokens()
     assert len(rows) == 1
     row = rows[0]
     assert token not in row.token_hash
     assert row.token_hash == hash_reset_token(token)
     assert len(row.token_hash) == 64
+    assert payload["idempotencyKey"] == f"password-reset:{row.id}"
     expires = row.expires_at
     if expires.tzinfo is None:
         expires = expires.replace(tzinfo=timezone.utc)
     delta = expires - datetime.now(timezone.utc)
     assert timedelta(minutes=29) <= delta <= timedelta(minutes=31)
+    sensitive = decrypt_mail(payload)
+    assert_no_plaintext(payload, "hashed@example.com", token, sensitive["variables"]["resetUrl"])
 
 
 @pytest.mark.asyncio
-async def test_valid_token_changes_password_and_cannot_be_reused(client: AsyncClient, emails):
+async def test_valid_token_changes_password_and_cannot_be_reused(client: AsyncClient):
     await register_user(client, "reuse@example.com", password="oldpass123")
     me = await client.get("/api/v1/me")
     assert me.status_code == 200
 
     await client.post("/api/v1/auth/forgot-password", json={"email": "reuse@example.com"})
-    token = _token_from_url(_latest_reset_url(emails))
+    _payload, token = await _reset_token("reuse@example.com")
 
     ok = await client.post(
         "/api/v1/auth/reset-password",
@@ -200,10 +183,10 @@ async def test_expired_and_invalid_tokens_are_rejected(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_reset_password_validates_existing_policy(client: AsyncClient, emails):
+async def test_reset_password_validates_existing_policy(client: AsyncClient):
     await register_user(client, "policy@example.com")
     await client.post("/api/v1/auth/forgot-password", json={"email": "policy@example.com"})
-    token = _token_from_url(_latest_reset_url(emails))
+    _payload, token = await _reset_token("policy@example.com")
     short = await client.post(
         "/api/v1/auth/reset-password",
         json={"token": token, "password": "short"},
@@ -216,32 +199,30 @@ async def test_reset_password_validates_existing_policy(client: AsyncClient, ema
 
 
 @pytest.mark.asyncio
-async def test_email_provider_failure_is_logged_without_leaking(client: AsyncClient):
-    await register_user(client, "failmail@example.com")
-    set_email_provider(FailingEmailProvider())
-    with patch("app.modules.auth.password_reset.logger.exception") as mocked:
-        response = await client.post(
+async def test_forgot_password_rate_limit_is_preserved(client: AsyncClient):
+    for _ in range(RATE_LIMIT_MAX):
+        allowed = await client.post(
             "/api/v1/auth/forgot-password",
-            json={"email": "failmail@example.com"},
+            json={"email": "limited@example.com"},
         )
-    assert response.status_code == 200
-    assert response.json() == GENERIC_OK
-    mocked.assert_called_once()
-    assert mocked.call_args.args[0] == "password_reset_email_failed"
-    assert "email" not in mocked.call_args.kwargs
-    assert "token" not in mocked.call_args.kwargs
-    assert "reset_url" not in mocked.call_args.kwargs
-    tokens = await _load_tokens()
-    assert len(tokens) == 1
+        assert allowed.status_code == 200
+        assert allowed.json() == GENERIC_OK
+    blocked = await client.post(
+        "/api/v1/auth/forgot-password",
+        json={"email": "limited@example.com"},
+    )
+    assert blocked.status_code == 429
+    assert blocked.json()["error"]["code"] == "TOO_MANY_REQUESTS"
+    assert await _load_tokens() == []
 
 
 @pytest.mark.asyncio
-async def test_new_reset_request_invalidates_previous_token(client: AsyncClient, emails):
+async def test_new_reset_request_invalidates_previous_token(client: AsyncClient):
     await register_user(client, "rotate@example.com")
     await client.post("/api/v1/auth/forgot-password", json={"email": "rotate@example.com"})
-    first = _token_from_url(_latest_reset_url(emails))
+    _first_payload, first = await _reset_token("rotate@example.com")
     await client.post("/api/v1/auth/forgot-password", json={"email": "rotate@example.com"})
-    second = _token_from_url(_latest_reset_url(emails))
+    _second_payload, second = await _reset_token("rotate@example.com")
     assert first != second
     stale = await client.post(
         "/api/v1/auth/reset-password",
@@ -256,10 +237,10 @@ async def test_new_reset_request_invalidates_previous_token(client: AsyncClient,
 
 
 @pytest.mark.asyncio
-async def test_concurrent_reset_uses_token_only_once(client: AsyncClient, emails):
+async def test_concurrent_reset_uses_token_only_once(client: AsyncClient):
     await register_user(client, "race@example.com", password="oldpass123")
     await client.post("/api/v1/auth/forgot-password", json={"email": "race@example.com"})
-    token = _token_from_url(_latest_reset_url(emails))
+    _payload, token = await _reset_token("race@example.com")
     first, second = await asyncio.gather(
         client.post(
             "/api/v1/auth/reset-password",
@@ -283,18 +264,3 @@ async def test_concurrent_reset_uses_token_only_once(client: AsyncClient, emails
         json={"email": "race@example.com", "password": "NewpassBBB1"},
     )
     assert (login_a.status_code == 200) + (login_b.status_code == 200) == 1
-
-
-def test_password_reset_email_matches_landing_style():
-    url = "https://app.refiq.ru/reset-password?token=exampletoken"
-    subject, text, html = render_password_reset(reset_url=url, ttl_minutes=30)
-    assert "Восстановление пароля" in subject
-    assert url in text
-    assert "30 минут" in text
-    assert "<script" not in html.lower()
-    assert "#f2f5ef" in html
-    assert "#3d6b50" in html
-    assert "#27503a" in html
-    assert "border-radius:14px" in html
-    assert "border-radius:999px" in html
-    assert url in html

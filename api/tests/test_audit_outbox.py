@@ -69,6 +69,7 @@ async def _rows(offer_id: int) -> list[AuditOutboxEvent]:
         result = await session.execute(
             select(AuditOutboxEvent)
             .where(AuditOutboxEvent.aggregate_id == str(offer_id))
+            .where(AuditOutboxEvent.topic == settings.AUDIT_KAFKA_TOPIC)
             .order_by(AuditOutboxEvent.id.asc())
         )
         return list(result.scalars().all())

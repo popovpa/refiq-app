@@ -16,7 +16,7 @@ class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def register(self, data: RegisterRequest) -> User:
+    async def register(self, data: RegisterRequest, *, request_id: str | None = None) -> User:
         email = data.email.lower().strip()
 
         existing = await self.db.execute(select(User).where(User.email == email))
@@ -35,7 +35,7 @@ class AuthService:
 
         from app.modules.auth.email_confirmation import EmailConfirmationService
 
-        await EmailConfirmationService(self.db).issue(user)
+        await EmailConfirmationService(self.db).issue(user, request_id=request_id)
         await self.db.refresh(user, ["roles"])
         return user
 

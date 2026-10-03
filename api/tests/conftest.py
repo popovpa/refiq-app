@@ -1,9 +1,17 @@
+import os
+import base64
+
 import pytest
 import asyncio
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy import JSON, event
 from sqlalchemy.dialects.postgresql import JSONB
+
+if not os.environ.get("MAIL_EVENT_ENCRYPTION_KEY"):
+    os.environ["MAIL_EVENT_ENCRYPTION_KEY"] = base64.b64encode(b"0123456789abcdef0123456789abcdef").decode()
+os.environ.setdefault("MAIL_EVENT_ENCRYPTION_KEY_VERSION", "v1")
+os.environ.setdefault("MAIL_KAFKA_TOPIC", "mail-events")
 
 from app.core.database import Base, get_db
 
@@ -104,7 +112,6 @@ from app.main import app as fastapi_app
 from app.modules.ai.deps import set_usage_session_factory
 from app.modules.ai.jobs import DeferredJobRunner, set_job_runner
 from app.modules.assets.service import set_asset_storage
-from app.modules.email.deps import set_email_provider
 from app.core.config import settings as app_settings
 
 set_usage_session_factory(TestingSessionLocal)
@@ -130,8 +137,6 @@ async def setup_db(tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "ASSET_STORAGE_DIR", str(tmp_path / "assets"))
     monkeypatch.setattr(app_settings, "S3_ACCESS_KEY_ID", "")
     monkeypatch.setattr(app_settings, "S3_SECRET_ACCESS_KEY", "")
-    monkeypatch.setattr(app_settings, "YANDEX_POSTBOX_ACCESS_KEY_ID", "")
-    monkeypatch.setattr(app_settings, "YANDEX_POSTBOX_SECRET_ACCESS_KEY", "")
     monkeypatch.setattr(app_settings, "FINANCIAL_TRANSACTIONS_ENABLED", False)
     monkeypatch.setattr("app.core.database.async_session_factory", TestingSessionLocal)
     monkeypatch.setattr("app.modules.postback.service.async_session_factory", TestingSessionLocal)
@@ -144,7 +149,6 @@ async def setup_db(tmp_path, monkeypatch):
     monkeypatch.setattr(app_settings, "LEGAL_ENTITY_LOOKUP_PROVIDER", "fake")
     monkeypatch.setattr(app_settings, "DADATA_API_KEY", "")
     set_asset_storage(None)
-    set_email_provider(None)
     runner = DeferredJobRunner()
     set_job_runner(runner)
 
@@ -158,7 +162,6 @@ async def setup_db(tmp_path, monkeypatch):
     yield
     set_job_runner(None)
     set_asset_storage(None)
-    set_email_provider(None)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 

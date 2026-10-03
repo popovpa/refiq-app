@@ -12,7 +12,7 @@ from app.modules.audit.outbox.models import AuditOutboxEvent
 def claim_statement(now: datetime, batch_size: int, *, lock: bool = True):
     """Oldest due row per partition key.
 
-    A newer event for the same aggregate stays unpublished until the older one is published.
+    A newer event for the same topic and partition key stays unpublished until the older one is published.
     On PostgreSQL the selected rows are locked with FOR UPDATE SKIP LOCKED so two API
     replicas cannot publish the same row at the same time.
     """
@@ -20,6 +20,7 @@ def claim_statement(now: datetime, batch_size: int, *, lock: bool = True):
     older_unpublished = exists(
         select(older.id).where(
             older.published_at.is_(None),
+            older.topic == AuditOutboxEvent.topic,
             older.partition_key == AuditOutboxEvent.partition_key,
             older.id < AuditOutboxEvent.id,
         )
@@ -54,9 +55,14 @@ class OutboxRepository:
             raise ValueError("Audit payload is missing eventId")
         if payload.get("eventType") != event_type:
             raise ValueError("Outbox event_type does not match payload")
-        entity = payload.get("entity") or {}
-        if str(entity.get("id")) != aggregate_id or partition_key != aggregate_id:
-            raise ValueError("Kafka key, aggregate_id and entity.id must match")
+        # Audit documents carry entity.id. Other transport envelopes, such as mail,
+        # are keyed by aggregate_id and do not have an audit entity.
+        if "entity" in payload:
+            entity = payload.get("entity") or {}
+            if str(entity.get("id")) != aggregate_id or partition_key != aggregate_id:
+                raise ValueError("Kafka key, aggregate_id and entity.id must match")
+        elif partition_key != aggregate_id:
+            raise ValueError("Kafka key and aggregate_id must match")
         row = AuditOutboxEvent(
             event_id=event_id,
             topic=topic,

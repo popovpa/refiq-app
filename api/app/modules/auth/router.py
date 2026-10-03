@@ -37,9 +37,9 @@ def _set_session_cookie(response: Response, session_id: str):
 
 
 @router.post("/register", response_model=RegisterResponse)
-async def register(data: RegisterRequest, db: AsyncSession = Depends(get_db)):
+async def register(data: RegisterRequest, request: Request, db: AsyncSession = Depends(get_db)):
     service = AuthService(db)
-    await service.register(data)
+    await service.register(data, request_id=getattr(request.state, "request_id", None))
     return {
         "status": "ok",
         "message": "Мы отправили письмо для подтверждения аккаунта.",
@@ -91,9 +91,12 @@ async def confirm_email_login(
 
 
 @router.post("/forgot-password", response_model=ForgotPasswordResponse)
-async def forgot_password(data: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def forgot_password(data: ForgotPasswordRequest, request: Request, db: AsyncSession = Depends(get_db)):
     service = PasswordResetService(db)
-    return await service.request_reset(data.email)
+    return await service.request_reset(
+        data.email,
+        request_id=getattr(request.state, "request_id", None),
+    )
 
 
 @router.post("/reset-password", response_model=ResetPasswordResponse)

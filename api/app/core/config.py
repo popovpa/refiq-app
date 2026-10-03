@@ -24,13 +24,12 @@ class Settings(BaseSettings):
     ADMIN_CORS_ORIGINS: str = "http://localhost:3100,http://127.0.0.1:3100,http://localhost:5174"
     ADMIN_FRONTEND_URL: str = "http://localhost:3100"
 
-    YANDEX_POSTBOX_ACCESS_KEY_ID: str = ""
-    YANDEX_POSTBOX_SECRET_ACCESS_KEY: str = ""
-    YANDEX_POSTBOX_REGION: str = "ru-central1"
-    YANDEX_POSTBOX_ENDPOINT: str = "https://postbox.cloud.yandex.net"
-    EMAIL_FROM: str = "no-reply@refiq.ru"
-    EMAIL_FROM_NAME: str = "RefIQ"
-    EMAIL_SEND_TIMEOUT_SECONDS: float = 8.0
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_CLIENT_ID: str = "refiq-api"
+    MAIL_KAFKA_TOPIC: str = "mail-events"
+    MAIL_EVENT_ENCRYPTION_KEY: str = ""
+    MAIL_EVENT_ENCRYPTION_KEY_VERSION: str = "v1"
+    MAIL_SERVICE_URL: str = ""
 
     AI_PROVIDER: str = "openai"
     AI_TEXT_PROVIDER: str = ""
@@ -96,9 +95,6 @@ class Settings(BaseSettings):
     LEGAL_ENTITY_LOOKUP_SEARCH_TIMEOUT_SECONDS: float = 2.5
     LEGAL_ENTITY_LOOKUP_RESOLVE_TIMEOUT_SECONDS: float = 6.0
 
-    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
-    KAFKA_CLIENT_ID: str = "refiq-api"
-
     AUDIT_OUTBOX_ENABLED: bool = True
     AUDIT_KAFKA_TOPIC: str = "audit-events"
     AUDIT_OUTBOX_BATCH_SIZE: int = 100
@@ -112,10 +108,6 @@ class Settings(BaseSettings):
     @property
     def s3_enabled(self) -> bool:
         return bool(self.S3_ACCESS_KEY_ID and self.S3_SECRET_ACCESS_KEY)
-
-    @property
-    def postbox_enabled(self) -> bool:
-        return bool(self.YANDEX_POSTBOX_ACCESS_KEY_ID and self.YANDEX_POSTBOX_SECRET_ACCESS_KEY)
 
     @property
     def public_app_url(self) -> str:
