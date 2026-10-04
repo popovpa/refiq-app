@@ -97,21 +97,10 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
-      interval: 5s
-      timeout: 3s
+      interval: 30s
+      timeout: 5s
       retries: 12
-      start_period: 15s
-
-  kafka-mail-topics:
-    image: apache/kafka:4.0.0
-    environment:
-      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
-    entrypoint: ["/bin/bash", "/provision_kafka_topics.sh"]
-    volumes:
-      - ../mail/scripts/provision_kafka_topics.sh:/provision_kafka_topics.sh:ro
-    networks:
-      - internal
-    restart: "no"
+      start_period: 20s
 
   mail-consumer:
     build:
@@ -129,8 +118,6 @@ services:
     depends_on:
       mail:
         condition: service_healthy
-      kafka-mail-topics:
-        condition: service_completed_successfully
     networks:
       - internal
     restart: unless-stopped
