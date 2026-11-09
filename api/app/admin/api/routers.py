@@ -49,6 +49,7 @@ async def list_businesses(
     created_to: datetime | None = None,
     has_connected_sites: bool | None = None,
     has_active_offers: bool | None = None,
+    order: str | None = Query(default=None, pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
     _admin=Depends(read),
@@ -62,6 +63,7 @@ async def list_businesses(
         created_to=created_to,
         has_connected_sites=has_connected_sites,
         has_active_offers=has_active_offers,
+        order=order,
         page=page,
         per_page=per_page,
     )
@@ -87,12 +89,13 @@ async def get_business(business_id: str, _admin=Depends(read), db: AsyncSession 
 async def list_partners(
     q: str | None = None,
     status: str | None = None,
+    order: str | None = Query(default=None, pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=100),
     _admin=Depends(read),
     db: AsyncSession = Depends(get_db),
 ):
-    return await catalog.list_partners(db, q=q, status=status, page=page, per_page=per_page)
+    return await catalog.list_partners(db, q=q, status=status, order=order, page=page, per_page=per_page)
 
 
 @resources_router.get("/partners/{partner_id}")

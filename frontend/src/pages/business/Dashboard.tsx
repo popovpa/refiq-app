@@ -20,6 +20,7 @@ import { cn } from '@/shared/utils/cn';
 import { formatMoney, formatNumber } from '@/shared/utils/format';
 import { partnerDisplayName } from '@/shared/partners/displayName';
 import { PageHeading } from '@/shared/dateRange/PageHeading';
+import { chartTheme } from '@/shared/charts/theme';
 import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 import {
   postbackStatusClass,
@@ -84,10 +85,10 @@ interface DashboardData {
 }
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  pending: { label: 'Ожидание', className: 'bg-yellow-50 text-yellow-700' },
+  pending: { label: 'Ожидание', className: 'bg-warning-soft text-warning' },
   approved: { label: 'Одобрена', className: 'bg-accent text-primary' },
-  rejected: { label: 'Отклонена', className: 'bg-red-50 text-red-700' },
-  paid: { label: 'Выплачена', className: 'bg-blue-50 text-blue-700' },
+  rejected: { label: 'Отклонена', className: 'bg-destructive-soft text-destructive' },
+  paid: { label: 'Выплачена', className: 'bg-info-soft text-info' },
 };
 
 function formatChange(value: number | null): string | undefined {
@@ -140,21 +141,21 @@ export function BusinessDashboard() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col flex-1 min-h-0 h-full gap-3 overflow-hidden">
+      <div className="flex flex-col gap-3 lg:flex-1 lg:min-h-0 lg:h-full lg:overflow-hidden">
         <PageHeading title="Обзор" dateRangeFilter="header" className="shrink-0" />
         <div className="grid grid-cols-2 xl:grid-cols-6 gap-3 shrink-0">
           {[...Array(6)].map((_, i) => (
             <Skeleton key={i} className="h-[88px] rounded-xl" />
           ))}
         </div>
-        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.7fr)_minmax(240px,0.9fr)] gap-3 flex-1 min-h-0">
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.7fr)_minmax(240px,0.9fr)] gap-3 lg:flex-1 lg:min-h-0">
           <Skeleton className="rounded-xl min-h-0" />
           <div className="flex flex-col gap-3 min-h-0">
             <Skeleton className="flex-1 rounded-xl min-h-0" />
             <Skeleton className="h-[112px] rounded-xl shrink-0" />
           </div>
         </div>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 flex-1 min-h-0">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:flex-1 lg:min-h-0">
           <Skeleton className="rounded-xl min-h-0" />
           <Skeleton className="rounded-xl min-h-0" />
         </div>
@@ -199,7 +200,7 @@ export function BusinessDashboard() {
   const kpis = data.kpis;
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 h-full gap-3 max-lg:overflow-auto lg:overflow-hidden">
+    <div className="flex flex-col gap-3 lg:flex-1 lg:min-h-0 lg:h-full lg:overflow-hidden">
       <PageHeading title="Обзор" dateRangeFilter="header" className="shrink-0" />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 shrink-0">
@@ -241,7 +242,7 @@ export function BusinessDashboard() {
         <StatCard compact title="Комиссии партнёрам" value={formatMoney(kpis.commissions)} icon={Wallet} tone="green" />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.7fr)_minmax(240px,0.9fr)] gap-3 flex-1 min-h-0">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.7fr)_minmax(240px,0.9fr)] gap-3 lg:flex-1 lg:min-h-0">
         <section className="ui-card p-3 min-h-[220px] xl:min-h-0 flex flex-col">
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2 shrink-0">
             <h2 className="ui-section-title">{metric === 'sales' ? 'Динамика продаж' : 'Динамика конверсий'}</h2>
@@ -258,19 +259,13 @@ export function BusinessDashboard() {
             {hasChartData ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="overviewFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(174 72% 40%)" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="hsl(174 72% 40%)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(220 16% 90%)" />
-                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: 'hsl(220 10% 46%)', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
+                  <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fill: chartTheme.tick, fontSize: 12 }} />
                   <YAxis
                     axisLine={false}
                     tickLine={false}
                     width={metric === 'sales' ? 56 : 36}
-                    tick={{ fill: 'hsl(220 10% 46%)', fontSize: 12 }}
+                    tick={{ fill: chartTheme.tick, fontSize: 12 }}
                     tickFormatter={(value: number) => (metric === 'sales' ? formatNumber(value) : String(value))}
                   />
                   <Tooltip
@@ -280,7 +275,7 @@ export function BusinessDashboard() {
                     }}
                     labelFormatter={(_, payload) => formatDay(payload?.[0]?.payload?.date || '')}
                   />
-                  <Area type="monotone" dataKey="value" stroke="hsl(174 72% 40%)" strokeWidth={2.5} fill="url(#overviewFill)" />
+                  <Area type="monotone" dataKey="value" stroke={chartTheme.primary} strokeWidth={2} fill={chartTheme.fill} />
                 </AreaChart>
               </ResponsiveContainer>
             ) : (
@@ -292,7 +287,7 @@ export function BusinessDashboard() {
         </section>
 
         <div className="flex flex-col gap-3 min-h-0">
-          <section className="ui-card p-3 flex-1 min-h-0 flex flex-col">
+          <section className="ui-card p-3 lg:flex-1 lg:min-h-0 flex flex-col">
             <div className="flex items-center justify-between gap-3 mb-2 shrink-0">
               <h2 className="ui-section-title">Последние конверсии</h2>
               <button type="button" onClick={() => navigate('/business/conversions')} className="text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 rounded-sm">
@@ -359,7 +354,7 @@ export function BusinessDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 flex-1 min-h-0">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 lg:flex-1 lg:min-h-0">
         <RankTable
           title="Топ офферов"
           emptyTitle="Недостаточно данных"

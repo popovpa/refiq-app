@@ -310,7 +310,7 @@ export function ProfilePage() {
       <div className="ui-card px-4 py-3 shrink-0">
         <div className="flex items-center gap-4">
           <button type="button" onClick={() => setAvatarOpen(true)} className="relative shrink-0 group">
-            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-brand to-primary text-white flex items-center justify-center text-lg font-semibold overflow-hidden">
+            <div className="w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-lg font-semibold overflow-hidden">
               {profile.avatar_url ? (
                 <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
               ) : (
@@ -831,7 +831,7 @@ function AvatarModal({
           }}
         />
         <div className="flex items-center gap-4">
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-brand to-primary text-white flex items-center justify-center text-2xl font-semibold overflow-hidden">
+          <div className="w-24 h-24 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-2xl font-semibold overflow-hidden">
             {preview ? <img src={preview} alt="" className="w-full h-full object-cover" /> : initialsValue}
           </div>
           <div className="text-sm text-muted-foreground">Предпросмотр 128×128</div>

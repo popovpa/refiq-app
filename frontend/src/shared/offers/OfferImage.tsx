@@ -24,7 +24,7 @@ export function OfferImage({
         box,
         src
           ? 'bg-muted text-muted-foreground'
-          : 'bg-gradient-to-br from-accent via-muted to-secondary text-primary',
+          : 'bg-primary-soft text-primary',
       )}
     >
       {src ? <img src={src} alt="" className="block size-full object-cover object-center" /> : initial}

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Menu } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui';
 import { GlobalSearch } from '@/components/GlobalSearch';
@@ -9,11 +10,19 @@ const ROLE_LABELS: Record<string, string> = {
   finance: 'Финансы',
 };
 
-export function Header() {
+export function Header({ onOpenMenu }: { onOpenMenu?: () => void }) {
   const { session, logout } = useAuth();
   const [open, setOpen] = useState(false);
   return (
     <header className="h-16 shrink-0 border-b bg-card px-4 flex items-center gap-4">
+      <button
+        type="button"
+        className="lg:hidden h-9 w-9 inline-flex items-center justify-center rounded-md border border-border bg-card text-foreground hover:bg-muted"
+        onClick={onOpenMenu}
+        aria-label="Открыть меню"
+      >
+        <Menu size={18} />
+      </button>
       <GlobalSearch />
       <div className="relative">
         <button type="button" className="text-sm font-medium" onClick={() => setOpen((v) => !v)}>

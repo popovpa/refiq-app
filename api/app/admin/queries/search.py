@@ -114,7 +114,7 @@ async def _short_code(db: AsyncSession, code: str) -> list[dict]:
             select(TrackingLink, Offer, Business, PartnerProfile)
             .join(Offer, Offer.id == TrackingLink.offer_id)
             .join(Business, Business.id == Offer.business_id)
-            .join(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
+            .outerjoin(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
             .where(TrackingLink.short_code == code)
         )
     ).first()
@@ -131,7 +131,7 @@ async def _short_code(db: AsyncSession, code: str) -> list[dict]:
             "context": {
                 "offer": offer.name,
                 "business": business.name,
-                "partner": partner.display_name,
+                "partner": partner.display_name if partner else None,
                 "status": link.status,
             },
         }

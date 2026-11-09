@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { api, type ApiError } from '@/shared/api/client';
@@ -12,8 +12,9 @@ import { cn } from '@/shared/utils/cn';
 import type { BusinessPromotionLink } from '@/shared/links/BusinessLinkDetailDrawer';
 import { BusinessLinkDetailDrawer } from '@/shared/links/BusinessLinkDetailDrawer';
 import { EditDestinationModal } from '@/shared/links/EditDestinationModal';
+import { OfferDestinationsSection } from '@/shared/offers/OfferDestinationsSection';
 import { CreateBusinessCampaignModal } from '@/shared/promotion/CreateBusinessCampaignModal';
-import { CreateBusinessLinkModal } from '@/shared/promotion/CreateBusinessLinkModal';
+import { CreateTrackingLinkModal } from '@/shared/offers/CreateTrackingLinkModal';
 import type { TrafficSplit } from '@/pages/business/offerDetailTypes';
 
 export type BusinessCampaign = {
@@ -33,6 +34,7 @@ export type BusinessOwnLink = {
   url: string;
   short_code: string;
   destination_url: string;
+  destination_title?: string | null;
   campaign_id?: number | null;
   campaign_name?: string | null;
   owner_type?: string;
@@ -77,10 +79,6 @@ export function OfferPromotionTab({
 
   const campaigns = campaignsQuery.data?.items || [];
   const ownLinks = ownLinksQuery.data?.items || [];
-  const activeCampaigns = useMemo(
-    () => campaigns.filter((item) => item.status === 'ACTIVE'),
-    [campaigns],
-  );
 
   const archiveCampaign = useMutation({
     mutationFn: ({ id, status }: { id: number; status: 'ACTIVE' | 'ARCHIVED' }) =>
@@ -149,6 +147,8 @@ export function OfferPromotionTab({
           <TrafficCard title="Партнёрский трафик" stats={trafficSplit.partner} showCommissions />
         </div>
       )}
+
+      <OfferDestinationsSection offerId={offerId} />
 
       <section className="ui-card overflow-x-auto">
         <div className="px-4 py-3 border-b border-border/70">
@@ -225,8 +225,9 @@ export function OfferPromotionTab({
             <thead>
               <tr>
                 <th>Ссылка</th>
+                <th>Название</th>
+                <th>Страница</th>
                 <th>Кампания</th>
-                <th>Целевая страница</th>
                 <th>Статус</th>
                 <th className="text-right">Клики</th>
                 <th className="text-right">Конверсии</th>
@@ -254,12 +255,12 @@ export function OfferPromotionTab({
                     >
                       <code className="text-xs bg-muted px-2 py-1 rounded-md">{displayTrackingUrl(link.short_code)}</code>
                     </button>
-                    {link.name && <p className="text-xs text-muted-foreground mt-1">{link.name}</p>}
+                  </td>
+                  <td className="max-w-[180px] truncate">{link.name || '—'}</td>
+                  <td className="max-w-[220px] truncate" title={link.destination_title || link.destination_url}>
+                    {link.destination_title || link.destination_url}
                   </td>
                   <td>{link.campaign_name || 'Без кампании'}</td>
-                  <td className="max-w-[220px] truncate" title={link.destination_url}>
-                    {link.destination_url}
-                  </td>
                   <td>
                     <span className={cn('ui-badge', linkStatusClass(link.status))}>{linkStatusLabel(link.status)}</span>
                   </td>
@@ -333,11 +334,10 @@ export function OfferPromotionTab({
         />
       )}
       {linkModal && (
-        <CreateBusinessLinkModal
+        <CreateTrackingLinkModal
+          mode="business"
           offerId={offerId}
-          campaigns={activeCampaigns}
-          onClose={() => setLinkModal(false)}
-          onCreated={() => {
+          onClose={() => {
             invalidate();
             setLinkModal(false);
           }}

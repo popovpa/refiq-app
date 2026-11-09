@@ -21,6 +21,7 @@ from app.modules.businesses.models import Business, BusinessMembership  # noqa
 from app.modules.partners.models import PartnerProfile, BusinessPartner  # noqa
 from app.modules.products.models import Product  # noqa
 from app.modules.offers.models import Offer, OfferCommissionRule, OfferPartnerAccess  # noqa
+from app.modules.offers.destination_model import OfferDestination  # noqa
 from app.modules.audit.models import AuditEvent  # noqa
 from app.modules.audit.outbox.models import AuditOutboxEvent  # noqa
 from app.modules.catalog.models import OfferVertical, OfferCategory  # noqa

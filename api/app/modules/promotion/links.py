@@ -37,6 +37,7 @@ async def create_tracking_link(
     campaign_id: int | None = None,
     partner_id: int | None = None,
     business_id: int | None = None,
+    offer_destination_id: int | None = None,
 ) -> TrackingLink:
     assert_exclusive_owner(partner_id=partner_id, business_id=business_id)
     resolved_campaign_id = await resolve_campaign_for_owner(
@@ -49,12 +50,18 @@ async def create_tracking_link(
     if business_id is not None:
         assert_offer_allows_new_promotion(offer)
     destination = await assert_destination_allowed(db, business_id=offer.business_id, url=destination_url)
+    if offer_destination_id is not None:
+        from app.modules.offers.destination_service import lock_active_destination
+
+        bound = await lock_active_destination(db, offer.id, offer_destination_id)
+        destination = await assert_destination_allowed(db, business_id=offer.business_id, url=bound.url)
     link_name = (name or "").strip() or default_link_name(destination)
     link = TrackingLink(
         offer_id=offer.id,
         partner_id=partner_id,
         business_id=business_id,
         campaign_id=resolved_campaign_id,
+        offer_destination_id=offer_destination_id,
         short_code=await allocate_unique_short_code(db),
         destination_url=destination,
         name=link_name,

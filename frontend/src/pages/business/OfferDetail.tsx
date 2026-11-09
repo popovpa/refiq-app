@@ -30,11 +30,12 @@ import { OfferPromotionTab } from './OfferPromotionTab';
 import type { BusinessOfferDetailData } from './offerDetailTypes';
 import { partnerDisplayName } from '@/shared/partners/displayName';
 import { PartnerPublicProfileDialog } from '@/shared/partners/PartnerPublicProfileDialog';
+import { useDocumentTitle } from '@/shared/documentTitle';
 
 const partnerStatus: Record<string, { label: string; className: string }> = {
   approved: { label: 'Активен', className: 'bg-accent text-primary' },
-  pending: { label: 'Заявка', className: 'bg-yellow-50 text-yellow-700' },
-  rejected: { label: 'Отклонена', className: 'bg-red-50 text-red-700' },
+  pending: { label: 'Заявка', className: 'bg-warning-soft text-warning' },
+  rejected: { label: 'Отклонена', className: 'bg-destructive-soft text-destructive' },
   cancelled: { label: 'Отменена', className: 'bg-muted text-muted-foreground' },
 };
 
@@ -71,6 +72,7 @@ export function BusinessOfferDetail() {
     queryFn: () => api.get(withDateRangeQuery(`/business/offers/${id}`, range)),
     enabled: !!id,
   });
+  useDocumentTitle(offer?.name?.trim() || (isLoading ? 'Оффер' : 'Оффер не найден'));
   const { data: ownLinksData } = useQuery<{ items: Array<{ status: string; stats?: { clicks?: number } }> }>({
     queryKey: ['business', 'offers', id, 'own-links'],
     queryFn: () => api.get(`/business/offers/${id}/links`),

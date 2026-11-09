@@ -4,6 +4,7 @@ import { Lock } from 'lucide-react';
 import { Button } from '@/shared/components/Button';
 import { authApi } from '@/shared/api/auth';
 import { AuthField } from './AuthField';
+import { useDocumentTitle } from '@/shared/documentTitle';
 
 export function ResetPasswordPage() {
   const [searchParams] = useSearchParams();
@@ -14,6 +15,9 @@ export function ResetPasswordPage() {
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const [state, setState] = useState<'form' | 'success' | 'invalid'>(token ? 'form' : 'invalid');
+  useDocumentTitle(
+    state === 'success' ? 'Пароль успешно изменён' : state === 'invalid' ? 'Ссылка недействительна' : 'Новый пароль',
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

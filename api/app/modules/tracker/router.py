@@ -7,8 +7,10 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.exceptions import NotFoundError
+from app.common.enums import DestinationStatus
 from app.modules.links.models import Click, TrackingLink, TrackingLinkStatus
 from app.modules.links.short_code import SHORT_CODE_PATTERN
+from app.modules.offers.destination_model import OfferDestination
 from app.modules.offers.models import Offer
 from app.modules.promotion.attribution import (
     PARTNER_RQCID_COOKIE,
@@ -41,13 +43,20 @@ async def redirect_tracking_link(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(TrackingLink).where(
+        select(TrackingLink, OfferDestination.status)
+        .outerjoin(OfferDestination, OfferDestination.id == TrackingLink.offer_destination_id)
+        .where(
             TrackingLink.short_code == short_code,
             TrackingLink.status == TrackingLinkStatus.ACTIVE.value,
         )
     )
-    link = result.scalar_one_or_none()
-    if not link or not link.destination_url:
+    row = result.one_or_none()
+    if not row:
+        raise NotFoundError("Link")
+    link, destination_status = row
+    if not link.destination_url:
+        raise NotFoundError("Link")
+    if link.offer_destination_id is not None and destination_status != DestinationStatus.ACTIVE.value:
         raise NotFoundError("Link")
 
     offer = (await db.execute(select(Offer).where(Offer.id == link.offer_id))).scalar_one_or_none()

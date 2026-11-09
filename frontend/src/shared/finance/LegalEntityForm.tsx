@@ -166,7 +166,7 @@ export function LegalEntityForm({
       </div>
       <VerificationBanner status={status} reason={form.verification_reason} />
       {unsupportedIndividual ? (
-        <div className="flex gap-2.5 rounded-lg border border-warning/30 bg-orange-50 px-3 py-2 text-sm text-warning">
+        <div className="flex gap-2.5 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning">
           <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />
           <div className="min-w-0">
             <p className="font-medium">{UNSUPPORTED_PARTNER_INDIVIDUAL_MESSAGE}</p>
@@ -327,7 +327,7 @@ export function LegalEntityForm({
 function VerificationBanner({ status, reason }: { status: string; reason?: string | null }) {
   if (status === 'REJECTED') {
     return (
-      <div className="flex gap-2.5 rounded-lg border border-destructive/30 bg-red-50 px-3 py-2 text-sm text-destructive">
+      <div className="flex gap-2.5 rounded-lg border border-destructive/30 bg-destructive-soft px-3 py-2 text-sm text-destructive">
         <AlertTriangle size={16} className="shrink-0 mt-0.5" aria-hidden />
         <div className="min-w-0">
           <p className="font-medium">Юридические данные отклонены</p>
@@ -339,7 +339,7 @@ function VerificationBanner({ status, reason }: { status: string; reason?: strin
   }
   if (status === 'PENDING_VERIFICATION' || status === 'REVIEW_REQUIRED') {
     return (
-      <div className="flex gap-2.5 rounded-lg border border-warning/30 bg-orange-50 px-3 py-2 text-sm text-warning">
+      <div className="flex gap-2.5 rounded-lg border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning">
         <Info size={16} className="shrink-0 mt-0.5" aria-hidden />
         <div className="min-w-0">
           <p className="font-medium">Данные проверяются</p>
@@ -350,7 +350,7 @@ function VerificationBanner({ status, reason }: { status: string; reason?: strin
   }
   if (status === 'VERIFIED') {
     return (
-      <div className="flex items-center gap-2.5 rounded-lg border border-success/30 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+      <div className="flex items-center gap-2.5 rounded-lg border border-success/30 bg-success-soft px-3 py-2 text-sm text-success">
         <CheckCircle2 size={16} className="shrink-0" aria-hidden />
         <p className="font-medium">Юридические данные подтверждены</p>
       </div>
@@ -358,7 +358,7 @@ function VerificationBanner({ status, reason }: { status: string; reason?: strin
   }
   if (status === 'BLOCKED') {
     return (
-      <div className="flex items-center gap-2.5 rounded-lg border border-destructive/30 bg-red-50 px-3 py-2 text-sm text-destructive">
+      <div className="flex items-center gap-2.5 rounded-lg border border-destructive/30 bg-destructive-soft px-3 py-2 text-sm text-destructive">
         <AlertTriangle size={16} className="shrink-0" aria-hidden />
         <p className="font-medium">Юридические данные заблокированы</p>
       </div>

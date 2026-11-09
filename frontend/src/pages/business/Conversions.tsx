@@ -49,10 +49,10 @@ const sourceTabs = [
 ];
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  pending: { label: 'Ожидание', className: 'bg-yellow-50 text-yellow-700' },
+  pending: { label: 'Ожидание', className: 'bg-warning-soft text-warning' },
   approved: { label: 'Одобрена', className: 'bg-accent text-primary' },
-  rejected: { label: 'Отклонена', className: 'bg-red-50 text-red-700' },
-  paid: { label: 'Выплачена', className: 'bg-blue-50 text-blue-700' },
+  rejected: { label: 'Отклонена', className: 'bg-destructive-soft text-destructive' },
+  paid: { label: 'Выплачена', className: 'bg-info-soft text-info' },
 };
 
 export function BusinessConversions() {

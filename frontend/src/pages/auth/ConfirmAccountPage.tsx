@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/shared/components/Button';
 import { authApi } from '@/shared/api/auth';
 import { postAuthPath } from '@/shared/layout/roleContext';
+import { useDocumentTitle } from '@/shared/documentTitle';
 
 export function ConfirmAccountPage() {
   const [searchParams] = useSearchParams();
@@ -12,6 +13,9 @@ export function ConfirmAccountPage() {
   const navigate = useNavigate();
 
   const [state, setState] = useState<'loading' | 'activated' | 'invalid'>(token ? 'loading' : 'invalid');
+  useDocumentTitle(
+    state === 'activated' ? 'Аккаунт подтверждён' : state === 'invalid' ? 'Ссылка недействительна' : 'Подтверждение аккаунта',
+  );
   const [entering, setEntering] = useState(false);
   const [error, setError] = useState('');
 

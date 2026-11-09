@@ -247,6 +247,9 @@ async def create_offer(
     )
     await db.flush()
     await db.refresh(offer)
+    from app.modules.offers.destination_service import ensure_legacy_primary_destination
+
+    await ensure_legacy_primary_destination(db, offer)
     await record_offer_created(
         db,
         offer,
@@ -319,6 +322,12 @@ async def get_offer(
         )
     ).all()
     stats_by_link = await offer_link_stats(db, offer.id, date_range=date_range)
+    from app.modules.offers.destination_service import labels_for_destination_ids
+
+    promotion_labels = await labels_for_destination_ids(
+        db,
+        [link.offer_destination_id for link, _profile, _user in promotion_rows],
+    )
     own_stats = await offer_source_stats(db, offer.id, business_owned=True, date_range=date_range)
     partner_stats = await offer_source_stats(db, offer.id, business_owned=False, date_range=date_range)
     promotion_links = []
@@ -337,6 +346,7 @@ async def get_offer(
                 "status": link.status,
                 "clicks": link_stats["clicks"],
                 "conversions": link_stats["conversions"],
+                **promotion_labels.get(link.offer_destination_id, {}),
             }
         )
 
@@ -430,12 +440,11 @@ async def update_offer(
 
     await apply_commission_update(db, offer, commission_type, commission_value, commission_currency)
 
-    if product_url is not None and offer.product_id:
-        product = (
-            await db.execute(select(Product).where(Product.id == offer.product_id))
-        ).scalar_one_or_none()
-        if product:
-            product.url = product_url
+    landing_warning = None
+    if product_url is not None:
+        from app.modules.offers.destination_service import apply_product_url_change
+
+        landing_warning = await apply_product_url_change(db, offer, product_url)
 
     await record_offer_mutations(
         db,
@@ -445,7 +454,10 @@ async def update_offer(
         audit_context_from_http(request, session_data),
         source_operation="offers.update",
     )
-    return {"status": "ok"}
+    payload = {"status": "ok"}
+    if landing_warning:
+        payload["landing_warning"] = landing_warning
+    return payload
 
 
 @router.post("/{offer_id}/partners/{access_id}/approve")

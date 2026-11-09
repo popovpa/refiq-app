@@ -263,6 +263,8 @@ export function PartnerLinks() {
                   <tr>
                     <th>Оффер</th>
                     <th>Название</th>
+                    <th className="hidden lg:table-cell">Посадочная страница</th>
+                    <th className="hidden xl:table-cell">Кампания</th>
                     <th className="hidden md:table-cell">Ссылка</th>
                     <th className="hidden lg:table-cell">Источник</th>
                     <th className="hidden xl:table-cell text-right">Клики</th>
@@ -296,6 +298,12 @@ export function PartnerLinks() {
                         <span className={cn(isUnnamedLink(link.name) && 'text-muted-foreground')}>
                           {linkDisplayName(link.name)}
                         </span>
+                      </td>
+                      <td className="hidden lg:table-cell max-w-[180px] truncate">
+                        {link.destination_title || '—'}
+                      </td>
+                      <td className="hidden xl:table-cell max-w-[140px] truncate">
+                        {link.campaign_name || '—'}
                       </td>
                       <td className="hidden md:table-cell">
                         <code className="text-xs bg-muted px-2 py-1 rounded-md whitespace-nowrap">

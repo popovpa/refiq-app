@@ -75,11 +75,11 @@ export function PartnerOfferCard({
       onClick={() => onOpen(offer.id)}
       onKeyDown={handleKeyDown}
       className={cn(
-        'group relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-3',
-        'shadow-[0_4px_16px_rgba(16,24,40,0.05)]',
+        'group relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-border bg-card p-3',
+        'shadow-card',
         'transition-[border-color,box-shadow] duration-150 ease-out',
-        'hover:border-black/[0.08] hover:shadow-[0_8px_24px_rgba(16,24,40,0.07)]',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6BFF]/30',
+        'hover:border-line',
+        'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15',
       )}
     >
       {isOwn && (
@@ -88,23 +88,23 @@ export function PartnerOfferCard({
         </span>
       )}
 
-      <div className="h-[136px] overflow-hidden rounded-xl bg-slate-100">
+      <div className="h-[136px] overflow-hidden rounded-lg bg-muted">
         {offer.image_url ? (
           <img src={offer.image_url} alt="" className="block size-full object-cover object-center" />
         ) : (
           <div className="flex size-full items-center justify-center px-3 text-center">
-            <p className="text-[13px] font-medium text-slate-400">Без изображения</p>
+            <p className="text-[13px] font-medium text-muted-foreground">Без изображения</p>
           </div>
         )}
       </div>
 
-      <h3 className="mt-2.5 min-h-[40px] text-[15px] font-semibold leading-5 tracking-tight text-slate-900 line-clamp-2">
+      <h3 className="mt-2.5 min-h-[40px] text-[15px] font-semibold leading-5 tracking-tight text-foreground line-clamp-2">
         {offerCardTitle(offer.name)}
       </h3>
 
       <div className="mt-1.5 min-h-6">
         {categoryName ? (
-          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#E8F1FF] px-2 py-0.5 text-[11px] font-medium text-[#2F6BFF]">
+          <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-medium text-info">
             <CategoryChipIcon offer={offer} />
             <span className="truncate">{categoryName}</span>
           </span>
@@ -113,38 +113,38 @@ export function PartnerOfferCard({
 
       <div className="mt-2.5 flex items-center gap-3">
         <div className="min-w-0 shrink-0">
-          <p className="text-[26px] font-semibold leading-none tracking-tight text-[#2F6BFF]">
+          <p className="text-[26px] font-semibold leading-none tracking-tight text-primary tabular-nums">
             {formatCommissionPrimary(rule)}
           </p>
-          <p className="mt-1 max-w-[8.5rem] truncate text-[11px] leading-tight text-slate-500">
+          <p className="mt-1 max-w-[8.5rem] truncate text-[11px] leading-tight text-muted-foreground">
             {formatCommissionContext(offer.conversion_type, rule)}
           </p>
         </div>
-        <div className="h-10 w-px shrink-0 bg-slate-200" aria-hidden />
-        <div className="flex min-w-0 flex-col gap-1 text-[11px] leading-none text-slate-500">
-          <MetricRow icon={<ShoppingCart size={12} className="text-slate-400" />}>
+        <div className="h-10 w-px shrink-0 bg-border" aria-hidden />
+        <div className="flex min-w-0 flex-col gap-1 text-[11px] leading-none text-muted-foreground">
+          <MetricRow icon={<ShoppingCart size={12} className="text-muted-foreground" />}>
             {offerCardMetricValue(conversionLabel(offer.conversion_type))}
           </MetricRow>
-          <MetricRow icon={<BarChart3 size={12} className="text-emerald-500" />} title={epc.title}>
+          <MetricRow icon={<BarChart3 size={12} className="text-success" />} title={epc.title}>
             EPC {offerCardMetricValue(epc.value)}
           </MetricRow>
-          <MetricRow icon={<TrendingUp size={12} className="text-sky-500" />} title={cr.title}>
+          <MetricRow icon={<TrendingUp size={12} className="text-info" />} title={cr.title}>
             CR {offerCardMetricValue(cr.value)}
           </MetricRow>
         </div>
       </div>
 
       <div className="mt-2.5 flex min-w-0 gap-1.5">
-        <InfoPill icon={<Globe size={12} />} className="bg-emerald-50 text-emerald-800">
+        <InfoPill icon={<Globe size={12} />} className="bg-success-soft text-success">
           {formatOfferGeo(offer.geo)}
         </InfoPill>
-        <InfoPill icon={<Lock size={12} />} className="bg-slate-100 text-slate-600">
+        <InfoPill icon={<Lock size={12} />} className="bg-muted text-muted-foreground">
           {offerCardAccessLabel(offer.access_policy)}
         </InfoPill>
       </div>
 
       <div className="mt-auto flex min-h-[52px] flex-col justify-end pt-2.5" onClick={stopCardActivation} onKeyDown={stopCardActivation}>
-        {statusNote ? <p className="mb-1 truncate text-[11px] text-amber-700">{statusNote}</p> : <span className="mb-1 h-[16px]" />}
+        {statusNote ? <p className="mb-1 truncate text-[11px] text-warning">{statusNote}</p> : <span className="mb-1 h-[16px]" />}
         {cta.kind === 'own-active' && (
           <CardCta disabled={promoteOwnPending} onClick={() => onPromoteOwn?.(offer)}>
             {promoteOwnPending ? OWN_OFFER_PROMOTE_PENDING_LABEL : cta.label}
@@ -226,10 +226,10 @@ function CardCta({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        'inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg text-[13px] font-semibold transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2F6BFF]/30',
+        'inline-flex h-[38px] w-full items-center justify-center gap-1.5 rounded-md text-[13px] font-semibold transition-colors',
+        'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15',
         'disabled:pointer-events-none disabled:opacity-50',
-        tone === 'accent' ? 'bg-[#2F6BFF] text-white hover:bg-[#2458E0]' : 'bg-slate-100 text-slate-700 hover:bg-slate-200',
+        tone === 'accent' ? 'bg-primary text-primary-foreground hover:bg-primary-hover' : 'bg-muted text-foreground hover:bg-secondary',
       )}
     >
       {children}

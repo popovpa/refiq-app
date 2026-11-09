@@ -4,6 +4,7 @@ import { useAuth } from '@/shared/hooks/useAuth';
 import { useToast } from '@/shared/components/Toast';
 import { Button } from '@/shared/components/Button';
 import { AuthField } from './AuthField';
+import { useDocumentTitle } from '@/shared/documentTitle';
 
 export function RegisterPage() {
   const { register } = useAuth();
@@ -18,6 +19,7 @@ export function RegisterPage() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
   const [submittedEmail, setSubmittedEmail] = useState('');
+  useDocumentTitle(submittedEmail ? 'Проверьте почту' : 'Регистрация');
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

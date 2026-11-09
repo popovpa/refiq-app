@@ -23,9 +23,8 @@ export function AuthLayout() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,hsla(174,72%,40%,0.10),transparent_42%),radial-gradient(circle_at_bottom_left,hsla(248,78%,62%,0.10),transparent_42%)]" />
-      <div className="relative w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <div className="w-full max-w-md">
         <div className="text-center mb-7">
           <div className="inline-flex items-center justify-center gap-2.5 mb-3">
             <img

@@ -1,0 +1,156 @@
+{
+  "name": "RefIQ UI Kit · Navy Navigation",
+  "version": "1.1.0",
+  "theme": "light",
+  "description": "Navy side navigation combined with the original light workspace and v1.0 components",
+  "colors": {
+    "canvas": "#F7F9FC",
+    "surface": "#FFFFFF",
+    "surface-subtle": "#F2F5FA",
+    "border": "#E5EAF2",
+    "border-strong": "#CED7E5",
+    "text": "#1C273B",
+    "text-secondary": "#68778D",
+    "text-tertiary": "#93A0B2",
+    "primary": "#586AD9",
+    "primary-hover": "#4B5DC5",
+    "primary-soft": "#EDF0FF",
+    "success": "#287F61",
+    "success-soft": "#E8F7F0",
+    "warning": "#99661E",
+    "warning-soft": "#FFF4E2",
+    "danger": "#B95252",
+    "danger-soft": "#FCEBEC",
+    "info": "#4E70BE",
+    "info-soft": "#EAF2FF"
+  },
+  "fontFamily": [
+    "Inter",
+    "-apple-system",
+    "BlinkMacSystemFont",
+    "Segoe UI",
+    "Arial",
+    "sans-serif"
+  ],
+  "typography": {
+    "display": {
+      "fontSize": 38,
+      "lineHeight": 1.1,
+      "weight": 760,
+      "letterSpacing": -1.7
+    },
+    "pageTitle": {
+      "fontSize": "30–43",
+      "lineHeight": 1.16,
+      "weight": 760,
+      "letterSpacing": -1.65
+    },
+    "sectionTitle": {
+      "fontSize": 20,
+      "weight": 730
+    },
+    "body": {
+      "fontSize": 14,
+      "lineHeight": 1.5,
+      "weight": 400
+    },
+    "caption": {
+      "fontSize": 12,
+      "lineHeight": 1.5,
+      "weight": 400
+    },
+    "micro": {
+      "fontSize": 11,
+      "lineHeight": 1.4,
+      "weight": 650
+    }
+  },
+  "spacing": {
+    "unit": 4,
+    "steps": [
+      4,
+      8,
+      12,
+      16,
+      24,
+      32,
+      48,
+      64
+    ]
+  },
+  "radii": {
+    "xs": 6,
+    "sm": 10,
+    "md": 14,
+    "lg": 18,
+    "xl": 24,
+    "pill": 999
+  },
+  "components": {
+    "buttonHeights": {
+      "small": 30,
+      "default": 38,
+      "large": 44
+    },
+    "inputHeight": 42,
+    "cardPadding": 24,
+    "tableCellPaddingX": 17,
+    "tableCellPaddingY": 14
+  },
+  "breakpoints": {
+    "mobileMax": 650,
+    "compactTabletMax": 980,
+    "regularTabletMax": 1200
+  },
+  "statusModel": {
+    "conversion": [
+      "pending",
+      "approved",
+      "rejected"
+    ],
+    "offerAccess": [
+      "OPEN",
+      "APPROVAL_REQUIRED",
+      "INVITE_ONLY"
+    ],
+    "bettingAccessAllowed": [
+      "APPROVAL_REQUIRED",
+      "INVITE_ONLY"
+    ],
+    "bettingAccessForbidden": [
+      "OPEN"
+    ]
+  },
+  "roles": [
+    "Business",
+    "Partner"
+  ],
+  "notes": [
+    "Numbers use tabular glyphs",
+    "No partner contacts exposed to Business",
+    "Business pays Partner directly: RefIQ does not hold funds",
+    "Business-owned campaigns carry no partner commissions",
+    "Sample data only; no live API bindings"
+  ],
+  "shell": "navy-sidebar",
+  "navigation": {
+    "background": "#172F4B",
+    "backgroundBottom": "#244360",
+    "active": "#2C73DA",
+    "activeHover": "#276FD7",
+    "text": "#B6C9DE",
+    "textBright": "#F6FAFF",
+    "sectionLabel": "#829EBC",
+    "widthExpandedPx": 242,
+    "widthCollapsedPx": 76,
+    "mobileMode": "off-canvas drawer"
+  },
+  "changeLog": [
+    "Sidebar background changed to deep navy with restrained gradient",
+    "Active sidebar navigation changed to blue #2C73DA",
+    "Brand and account moved into the dark sidebar",
+    "Main content area, actions, typography, cards, charts and forms remain from 1.0",
+    "Added toggle to compare light vs navy navigation",
+    "Mobile navigation is an off-canvas drawer rather than horizontal chips"
+  ]
+}

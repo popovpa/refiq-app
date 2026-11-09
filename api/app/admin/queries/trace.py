@@ -53,7 +53,7 @@ async def build_trace(db: AsyncSession, rqcid: str, provider: ClickstreamProvide
             .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
             .join(Offer, Offer.id == TrackingLink.offer_id)
             .join(Business, Business.id == Offer.business_id)
-            .join(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
+            .outerjoin(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
             .outerjoin(Campaign, Campaign.id == TrackingLink.campaign_id)
             .where(Click.rqcid == rqcid)
         )
@@ -225,7 +225,7 @@ async def build_trace(db: AsyncSession, rqcid: str, provider: ClickstreamProvide
         "context": {
             "business": {"id": business.id, "name": business.name},
             "offer": {"id": offer.id, "name": offer.name},
-            "partner": {"id": partner.id, "name": partner.display_name},
+            "partner": {"id": partner.id, "name": partner.display_name} if partner else None,
             "tracking_link": {"id": link.id, "short_code": link.short_code, "status": link.status},
             "campaign": {"id": campaign.id, "name": campaign.name} if campaign else None,
             "created_at": iso(click.created_at),

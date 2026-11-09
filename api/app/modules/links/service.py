@@ -273,3 +273,7 @@ async def assert_can_activate_link(
         ).scalar_one_or_none()
         if not campaign or campaign.status != CampaignStatus.ACTIVE.value:
             raise AppError("LINK_UNAVAILABLE", "Ссылка больше не может быть использована.", 403)
+
+    from app.modules.offers.destination_service import assert_destination_allows_link_activation
+
+    await assert_destination_allows_link_activation(db, link)

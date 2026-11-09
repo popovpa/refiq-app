@@ -12,23 +12,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-all',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+          'inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-colors duration-150',
+          'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15',
           'disabled:pointer-events-none disabled:opacity-50',
           {
-            'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm':
-              variant === 'primary',
-            'bg-secondary text-secondary-foreground hover:bg-secondary/80':
-              variant === 'secondary',
-            'hover:bg-muted text-foreground': variant === 'ghost',
-            'bg-destructive text-destructive-foreground hover:bg-destructive/90':
-              variant === 'destructive',
-            'border border-primary/30 bg-card text-primary hover:bg-accent':
-              variant === 'outline',
+            'bg-primary text-primary-foreground hover:bg-primary-hover': variant === 'primary',
+            'border border-line bg-card text-foreground hover:bg-muted': variant === 'secondary',
+            'text-foreground hover:bg-muted': variant === 'ghost',
+            'bg-destructive text-destructive-foreground hover:bg-[#A34747]': variant === 'destructive',
+            'border border-line bg-card text-primary hover:bg-primary-soft': variant === 'outline',
           },
           {
-            'h-8 px-3 text-xs': size === 'sm',
-            'h-10 px-4 text-sm': size === 'md',
+            'h-[30px] px-3 text-xs': size === 'sm',
+            'h-[38px] px-4 text-[13px]': size === 'md',
             'h-11 px-5 text-sm': size === 'lg',
           },
           className,

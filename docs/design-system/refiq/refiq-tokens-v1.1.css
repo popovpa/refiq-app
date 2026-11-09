@@ -1,0 +1,27 @@
+/* RefIQ v1.1. Main semantic palette and navigation palette. */
+:root {
+  color-scheme: light;
+  --color-canvas:#F7F9FC; --color-surface:#FFFFFF; --color-surface-subtle:#F2F5FA;
+  --color-border:#E5EAF2; --color-border-strong:#CED7E5;
+  --color-text:#1C273B; --color-text-secondary:#68778D; --color-text-tertiary:#93A0B2;
+  --color-primary:#586AD9; --color-primary-hover:#4B5DC5; --color-primary-soft:#EDF0FF;
+  --color-success:#287F61; --color-success-soft:#E8F7F0;
+  --color-warning:#99661E; --color-warning-soft:#FFF4E2;
+  --color-danger:#B95252; --color-danger-soft:#FCEBEC;
+  --color-info:#4E70BE; --color-info-soft:#EAF2FF;
+  --radius-xs:6px; --radius-sm:10px; --radius-md:14px; --radius-lg:18px; --radius-xl:24px; --radius-pill:999px;
+  --shadow-sm:0 2px 7px rgba(31,49,82,.035); --shadow-md:0 15px 50px rgba(36,59,105,.08);
+  --focus:0 0 0 4px rgba(100,119,232,.14); --space-unit:4px;
+}
+:root {
+  --nav-bg: #172F4B;
+  --nav-bg-bottom: #244360;
+  --nav-hover: rgba(255,255,255,.085);
+  --nav-active: #2C73DA;
+  --nav-active-hover: #276FD7;
+  --nav-text: #B6C9DE;
+  --nav-text-bright: #F6FAFF;
+  --nav-label: #829EBC;
+  --nav-divider: rgba(255,255,255,.12);
+  --nav-width: 242px;
+}

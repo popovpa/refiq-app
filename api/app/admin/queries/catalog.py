@@ -34,6 +34,12 @@ def _offset_page(items, total: int, page: int, per_page: int) -> dict:
     }
 
 
+def _registration_order(created_at_col, id_col, order: str | None):
+    if (order or "").lower() == "asc":
+        return (created_at_col.asc(), id_col.asc())
+    return (created_at_col.desc(), id_col.desc())
+
+
 async def _owner_email(db: AsyncSession, business_id: int) -> str | None:
     row = (
         await db.execute(
@@ -58,6 +64,7 @@ async def list_businesses(
     created_to: datetime | None = None,
     has_connected_sites: bool | None = None,
     has_active_offers: bool | None = None,
+    order: str | None = None,
     page: int = 1,
     per_page: int = 50,
 ) -> dict:
@@ -101,7 +108,11 @@ async def list_businesses(
 
     total = (await db.execute(count_stmt)).scalar_one()
     rows = (
-        await db.execute(stmt.order_by(Business.id.desc()).offset((page - 1) * per_page).limit(per_page))
+        await db.execute(
+            stmt.order_by(*_registration_order(Business.created_at, Business.id, order))
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        )
     ).scalars().all()
 
     items = []
@@ -341,6 +352,7 @@ async def list_partners(
     *,
     q: str | None = None,
     status: str | None = None,
+    order: str | None = None,
     page: int = 1,
     per_page: int = 50,
 ) -> dict:
@@ -359,7 +371,9 @@ async def list_partners(
     total = (await db.execute(count_stmt)).scalar_one()
     rows = (
         await db.execute(
-            stmt.order_by(PartnerProfile.id.desc()).offset((page - 1) * per_page).limit(per_page)
+            stmt.order_by(*_registration_order(PartnerProfile.created_at, PartnerProfile.id, order))
+            .offset((page - 1) * per_page)
+            .limit(per_page)
         )
     ).all()
     items = []
@@ -396,6 +410,20 @@ async def list_partners(
                 select(func.coalesce(func.sum(Commission.amount), 0)).where(Commission.partner_id == partner.id)
             )
         ).scalar_one()
+        last_click = (
+            await db.execute(
+                select(func.max(Click.created_at))
+                .select_from(Click)
+                .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
+                .where(TrackingLink.partner_id == partner.id)
+            )
+        ).scalar_one()
+        last_conv = (
+            await db.execute(
+                select(func.max(Conversion.created_at)).where(Conversion.partner_id == partner.id)
+            )
+        ).scalar_one()
+        last_activity = max([value for value in (last_click, last_conv, partner.updated_at) if value], default=None)
         items.append(
             {
                 "id": partner.id,
@@ -407,6 +435,8 @@ async def list_partners(
                 "conversions_30d": conversions,
                 "earnings": as_float(earnings),
                 "status": partner.status,
+                "created_at": iso(partner.created_at),
+                "last_activity_at": iso(last_activity),
             }
         )
     return _offset_page(items, total, page, per_page)
@@ -727,7 +757,7 @@ async def list_tracking_links(
         select(TrackingLink, Offer.name, Offer.business_id, Business.name, PartnerProfile.display_name, Campaign.name)
         .join(Offer, Offer.id == TrackingLink.offer_id)
         .join(Business, Business.id == Offer.business_id)
-        .join(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
+        .outerjoin(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
         .outerjoin(Campaign, Campaign.id == TrackingLink.campaign_id)
     )
     count_stmt = (
@@ -791,7 +821,7 @@ async def get_tracking_link(db: AsyncSession, link_id: int) -> dict:
             select(TrackingLink, Offer, Business, PartnerProfile, Campaign)
             .join(Offer, Offer.id == TrackingLink.offer_id)
             .join(Business, Business.id == Offer.business_id)
-            .join(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
+            .outerjoin(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
             .outerjoin(Campaign, Campaign.id == TrackingLink.campaign_id)
             .where(TrackingLink.id == link_id)
         )
@@ -812,8 +842,8 @@ async def get_tracking_link(db: AsyncSession, link_id: int) -> dict:
         "public_url": f"https://go.refiq.ru/{link.short_code}",
         "business_id": business.id,
         "business_name": business.name,
-        "partner_id": partner.id,
-        "partner_name": partner.display_name,
+        "partner_id": partner.id if partner else None,
+        "partner_name": partner.display_name if partner else None,
         "offer_id": offer.id,
         "offer_name": offer.name,
         "campaign_id": campaign.id if campaign else None,

@@ -46,7 +46,7 @@ export function AppLayout() {
         <Header onOpenMobileMenu={() => setMobileOpen(true)} />
         <main
           className={cn(
-            'flex-1 min-h-0 p-4 lg:p-6',
+            'flex-1 min-h-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-6',
             isFixedHeightPage ? 'overflow-hidden max-lg:overflow-auto flex flex-col' : 'overflow-auto',
           )}
         >
@@ -54,7 +54,7 @@ export function AppLayout() {
             className={cn(
               'mx-auto w-full',
               !isOfferWizard && 'max-w-content',
-              isFixedHeightPage && 'flex-1 min-h-0 flex flex-col overflow-hidden',
+              isFixedHeightPage && 'flex flex-col max-lg:overflow-visible lg:flex-1 lg:min-h-0 lg:overflow-hidden',
             )}
           >
             <Outlet />

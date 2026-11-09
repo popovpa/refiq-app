@@ -45,6 +45,7 @@ import {
 } from '@/shared/offers/wizard/ui';
 import type { BusinessSite } from '@/pages/business/settings/types';
 import { cn } from '@/shared/utils/cn';
+import { useDocumentTitle } from '@/shared/documentTitle';
 
 type Phase = 'ai-brief' | 'wizard';
 
@@ -95,15 +96,16 @@ export function OfferWizard({
 
   const updateOffer = useMutation({
     mutationFn: (nextStatus?: string) =>
-      api.patch(`/business/offers/${offerId}`, {
+      api.patch<{ landing_warning?: string | null }>(`/business/offers/${offerId}`, {
         ...formToPayload(form, nextStatus || status || 'draft'),
         status: nextStatus || status,
       }),
-    onSuccess: async () => {
+    onSuccess: async (data: { landing_warning?: string | null }) => {
       if (generationId) {
         await api.post(`/ai/generations/${generationId}/feedback`, { outcome: 'EDITED_AFTER_GENERATION' }).catch(() => undefined);
       }
       addToast('Изменения сохранены', 'success');
+      if (data?.landing_warning) addToast(data.landing_warning, 'info');
       onSaved(String(offerId));
     },
     onError: () => addToast('Не удалось сохранить оффер', 'error'),
@@ -136,6 +138,13 @@ export function OfferWizard({
 
   const errors = attempted ? stepErrors(form, step === 'review' ? 'conversions' : step) : {};
   const stepIndex = WIZARD_STEPS.findIndex((item) => item.id === step);
+  const wizardTitle =
+    phase === 'ai-brief'
+      ? 'Создать с AI'
+      : mode === 'edit'
+        ? 'Редактирование оффера'
+        : `Создание оффера — Шаг ${stepIndex + 1} из 4`;
+  useDocumentTitle(wizardTitle);
   const reachable = WIZARD_STEPS.filter((_item, index) => {
     if (index === 0) return true;
     const prev = WIZARD_STEPS[index - 1];
@@ -217,7 +226,7 @@ export function OfferWizard({
   return (
     <OfferWizardWorkspace>
       <OfferWizardHeader
-        title={mode === 'edit' ? 'Редактирование оффера' : `Создание оффера — Шаг ${stepIndex + 1} из 4`}
+        title={wizardTitle}
         backLabel={mode === 'edit' ? '← К офферу' : '← К списку офферов'}
         onBack={onBack}
       />

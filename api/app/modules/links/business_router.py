@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, HttpUrl, model_validator
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,9 +32,16 @@ class UpdateDestinationRequest(BaseModel):
 
 
 class CreateBusinessLinkRequest(BaseModel):
-    destination_url: HttpUrl
+    destination_url: HttpUrl | None = None
+    offer_destination_id: int | None = None
     campaign_id: int | None = None
     name: str | None = Field(default=None, max_length=255)
+
+    @model_validator(mode="after")
+    def require_destination(self):
+        if self.destination_url is None and self.offer_destination_id is None:
+            raise ValueError("destination_url or offer_destination_id is required")
+        return self
 
 
 class UpdateBusinessLinkStatusRequest(BaseModel):
@@ -84,10 +91,14 @@ async def list_business_own_links(
         )
     ).all()
     stats_by_link = await offer_link_stats(db, offer.id)
+    from app.modules.offers.destination_service import labels_for_destination_ids
+
+    label_map = await labels_for_destination_ids(db, [link.offer_destination_id for link, _name in rows])
     items = []
     for link, campaign_name in rows:
         link_stats = stats_by_link.get(link.id, {"clicks": 0, "conversions": 0})
         payload = serialize_link(link, campaign_name=campaign_name, stats=link_stats)
+        payload.update(label_map.get(link.offer_destination_id, {}))
         items.append(await _with_site_match(db, business_id, payload))
     return {"items": items}
 
@@ -101,13 +112,25 @@ async def create_business_own_link(
 ):
     business_id = parse_id(session_data["active_business_id"])
     offer = await require_offer_for_business(db, parse_id(offer_id), business_id)
+    if data.offer_destination_id is None and data.destination_url is None:
+        raise AppError("OFFER_LANDING_MISSING", "Укажите посадочную страницу или URL.", 400)
+    from app.modules.offers.destination_service import resolve_tracking_destination
+
+    destination, offer_destination_id = await resolve_tracking_destination(
+        db,
+        offer,
+        offer_destination_id=data.offer_destination_id,
+        destination_url=str(data.destination_url) if data.destination_url else None,
+        allow_explicit_url=True,
+    )
     link = await create_tracking_link(
         db,
         offer=offer,
-        destination_url=str(data.destination_url),
+        destination_url=destination,
         name=data.name,
         campaign_id=data.campaign_id,
         business_id=business_id,
+        offer_destination_id=offer_destination_id,
     )
     campaign_name = None
     if link.campaign_id:
@@ -136,6 +159,9 @@ async def update_business_own_link_status(
     new_status = data.status.value
     if new_status == TrackingLinkStatus.ACTIVE.value and link.status != TrackingLinkStatus.ACTIVE.value:
         assert_offer_allows_new_promotion(offer)
+        from app.modules.offers.destination_service import assert_destination_allows_link_activation
+
+        await assert_destination_allows_link_activation(db, link)
     link.status = new_status
     return serialize_link(link)
 

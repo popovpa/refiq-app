@@ -6,7 +6,14 @@ from app.admin.auth.service import AdminAuthService
 from app.modules.links.models import Click
 from sqlalchemy import select
 from tests.conftest import TestingSessionLocal
-from tests.helpers import create_partner_link, offer_payload, partner_with_access, register_business
+from tests.helpers import (
+    become_partner,
+    create_partner_link,
+    offer_payload,
+    partner_with_access,
+    register_business,
+    register_user,
+)
 
 
 ADMIN_PASSWORD = "admin-pass-word-1"
@@ -367,4 +374,149 @@ async def test_admin_business_lookup_and_list_filters(
 
     all_clicks = await admin_client.get("/api/admin/v1/clicks")
     assert {a["rqcid"], b["rqcid"]} <= {item["rqcid"] for item in all_clicks.json()["items"]}
+
+
+@pytest.mark.asyncio
+async def test_admin_lists_business_owned_tracking_links(client: AsyncClient, admin_client: AsyncClient):
+    await register_business(client, "admin-own-link@example.com")
+    offer = await client.post(
+        "/api/v1/business/offers",
+        json=offer_payload(
+            name="Own promotion",
+            product_url="https://crmpro.example.com/pricing",
+            status="active",
+            access_policy="open",
+            visibility="public",
+            commission_type="percent",
+            commission_value=10,
+            allowed_traffic=["seo", "telegram"],
+        ),
+    )
+    assert offer.status_code == 200, offer.text
+    offer_id = offer.json()["id"]
+    created = await client.post(
+        f"/api/v1/business/offers/{offer_id}/links",
+        json={"destination_url": "https://crmpro.example.com/pricing", "name": "Свой лендинг"},
+    )
+    assert created.status_code == 200, created.text
+    link = created.json()
+    assert link["partner_id"] is None
+
+    await _login(admin_client, email="own-link-admin@refiq.ru")
+    listed = await admin_client.get("/api/admin/v1/tracking-links")
+    assert listed.status_code == 200, listed.text
+    match = next(item for item in listed.json()["items"] if item["id"] == link["id"])
+    assert match["short_code"] == link["short_code"]
+    assert match["partner_id"] is None
+    assert match["partner_name"] is None
+    assert match["offer_id"] == int(offer_id)
+
+    detail = await admin_client.get(f"/api/admin/v1/tracking-links/{link['id']}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["short_code"] == link["short_code"]
+    assert detail.json()["partner_id"] is None
+    assert detail.json()["partner_name"] is None
+
+
+@pytest.mark.asyncio
+async def test_admin_lists_clicks_on_business_owned_links(client: AsyncClient, admin_client: AsyncClient, db: AsyncSession):
+    await register_business(client, "admin-own-click@example.com")
+    offer = await client.post(
+        "/api/v1/business/offers",
+        json=offer_payload(
+            name="Own click offer",
+            product_url="https://crmpro.example.com/pricing",
+            status="active",
+            access_policy="open",
+            visibility="public",
+            commission_type="percent",
+            commission_value=10,
+            allowed_traffic=["seo", "telegram"],
+        ),
+    )
+    assert offer.status_code == 200, offer.text
+    offer_id = offer.json()["id"]
+    created = await client.post(
+        f"/api/v1/business/offers/{offer_id}/links",
+        json={"destination_url": "https://crmpro.example.com/pricing"},
+    )
+    assert created.status_code == 200, created.text
+    redirected = await client.get(f"/go/{created.json()['short_code']}", follow_redirects=False)
+    assert redirected.status_code == 302
+    db.expire_all()
+    click = (await db.execute(select(Click).order_by(Click.id.desc()))).scalars().first()
+    assert click is not None
+
+    await _login(admin_client, email="own-click-admin@refiq.ru")
+    listed = await admin_client.get("/api/admin/v1/clicks")
+    assert listed.status_code == 200, listed.text
+    match = next(item for item in listed.json()["items"] if item["rqcid"] == click.rqcid)
+    assert match["short_code"] == created.json()["short_code"]
+    assert match["tracking_link_id"] == created.json()["id"]
+    assert match["partner_id"] is None
+    assert match["partner_name"] is None
+
+    detail = await admin_client.get(f"/api/admin/v1/clicks/{click.rqcid}")
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["rqcid"] == click.rqcid
+    assert detail.json()["partner_id"] is None
+
+    trace = await admin_client.get(f"/api/admin/v1/trace/{click.rqcid}")
+    assert trace.status_code == 200, trace.text
+    assert trace.json()["context"]["partner"] is None
+    assert trace.json()["context"]["tracking_link"]["short_code"] == created.json()["short_code"]
+
+
+def _ids_in_order(payload: dict, first_id: int, second_id: int) -> tuple[int, int]:
+    ids = [item["id"] for item in payload["items"]]
+    return ids.index(first_id), ids.index(second_id)
+
+
+@pytest.mark.asyncio
+async def test_admin_sorts_businesses_and_partners_by_registration(client: AsyncClient, admin_client: AsyncClient):
+    await register_business(client, "sort-biz-early@example.com", name="Early Sort Biz")
+    early_business = int((await client.get("/api/v1/auth/session")).json()["active_business_id"])
+    await register_business(client, "sort-biz-late@example.com", name="Late Sort Biz")
+    late_business = int((await client.get("/api/v1/auth/session")).json()["active_business_id"])
+
+    await register_user(client, "sort-partner-early@example.com")
+    await become_partner(client, "Early Sort Partner")
+    await register_user(client, "sort-partner-late@example.com")
+    await become_partner(client, "Late Sort Partner")
+
+    await _login(admin_client, email="sort-admin@refiq.ru")
+
+    early_partner = await admin_client.get("/api/admin/v1/partners", params={"q": "Early Sort Partner"})
+    late_partner = await admin_client.get("/api/admin/v1/partners", params={"q": "Late Sort Partner"})
+    assert early_partner.status_code == 200, early_partner.text
+    assert late_partner.status_code == 200, late_partner.text
+    early_partner_id = early_partner.json()["items"][0]["id"]
+    late_partner_id = late_partner.json()["items"][0]["id"]
+    assert early_partner.json()["items"][0]["created_at"]
+    assert early_partner.json()["items"][0]["last_activity_at"]
+
+    businesses_desc = await admin_client.get("/api/admin/v1/businesses", params={"q": "Sort Biz", "order": "desc"})
+    businesses_asc = await admin_client.get("/api/admin/v1/businesses", params={"q": "Sort Biz", "order": "asc"})
+    assert businesses_desc.status_code == 200, businesses_desc.text
+    assert all(item["created_at"] for item in businesses_desc.json()["items"])
+    assert _ids_in_order(businesses_desc.json(), late_business, early_business)[0] < _ids_in_order(
+        businesses_desc.json(), late_business, early_business
+    )[1]
+    assert _ids_in_order(businesses_asc.json(), early_business, late_business)[0] < _ids_in_order(
+        businesses_asc.json(), early_business, late_business
+    )[1]
+
+    partners_desc = await admin_client.get("/api/admin/v1/partners", params={"q": "Sort Partner", "order": "desc"})
+    partners_asc = await admin_client.get("/api/admin/v1/partners", params={"q": "Sort Partner", "order": "asc"})
+    assert _ids_in_order(partners_desc.json(), late_partner_id, early_partner_id)[0] < _ids_in_order(
+        partners_desc.json(), late_partner_id, early_partner_id
+    )[1]
+    assert _ids_in_order(partners_asc.json(), early_partner_id, late_partner_id)[0] < _ids_in_order(
+        partners_asc.json(), early_partner_id, late_partner_id
+    )[1]
+
+    default_businesses = await admin_client.get("/api/admin/v1/businesses", params={"q": "Sort Biz"})
+    assert [item["id"] for item in default_businesses.json()["items"]] == [
+        item["id"] for item in businesses_desc.json()["items"]
+    ]
 

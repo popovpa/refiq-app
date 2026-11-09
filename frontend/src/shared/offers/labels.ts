@@ -13,8 +13,8 @@ export const OFFER_STATUSES = [
 export const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   active: { label: 'Активен', className: 'bg-accent text-primary' },
   draft: { label: 'Черновик', className: 'bg-muted text-muted-foreground' },
-  paused: { label: 'Приостановлен', className: 'bg-yellow-50 text-yellow-700' },
-  closing: { label: 'Закрывается', className: 'bg-orange-50 text-warning' },
+  paused: { label: 'Приостановлен', className: 'bg-warning-soft text-warning' },
+  closing: { label: 'Закрывается', className: 'bg-warning-soft text-warning' },
   archived: { label: 'Архивный', className: 'bg-muted text-muted-foreground' },
 };
 

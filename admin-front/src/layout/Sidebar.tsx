@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   Building2,
@@ -13,12 +14,12 @@ import {
   ScrollText,
   Scale,
   LayoutDashboard,
+  X,
 } from 'lucide-react';
 import { cn } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { ADMIN_FINANCE } from '@/lib/permissions';
-import logoMark from '@/assets/brand/logo.png';
-import logoLabel from '@/assets/brand/label.png';
+import sidebarLogo from '@/assets/brand/sidebar-logo.png';
 
 const NAV: {
   heading: string | null;
@@ -64,22 +65,58 @@ const NAV: {
   },
 ];
 
-export function Sidebar() {
+export function Sidebar({ onClose }: { onClose?: () => void }) {
   const { has } = useAuth();
+
+  useEffect(() => {
+    if (!onClose) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [onClose]);
+
   return (
-    <aside className="w-[240px] shrink-0 border-r bg-card flex flex-col">
-      <div className="h-16 px-4 flex items-center gap-2 border-b">
-        <img src={logoMark} alt="" className="h-7 w-auto select-none" draggable={false} />
-        <img src={logoLabel} alt="RefIQ" className="h-4 w-auto select-none" draggable={false} />
-        <span className="ml-1 text-[10px] uppercase tracking-wider text-muted-foreground">Admin</span>
+    <aside
+      className={cn(
+        'w-[242px] shrink-0 bg-nav text-nav-text flex flex-col h-full',
+        onClose && 'w-[min(284px,calc(100vw-48px))]',
+      )}
+    >
+      <div className="h-16 px-3 flex items-center gap-2">
+        <img
+          src={sidebarLogo}
+          alt="RefIQ"
+          className="h-8 w-auto max-w-[150px] object-contain object-left select-none"
+          draggable={false}
+        />
+        {!onClose && (
+          <span className="text-[10px] uppercase tracking-wider text-nav-label">Admin</span>
+        )}
+        {onClose && (
+          <button
+            type="button"
+            className="ml-auto p-1.5 rounded-md text-nav-text hover:bg-nav-hover hover:text-nav-bright"
+            onClick={onClose}
+            aria-label="Закрыть меню"
+          >
+            <X size={18} />
+          </button>
+        )}
       </div>
-      <nav className="flex-1 overflow-auto py-3 px-2">
+      <nav className="flex-1 overflow-auto py-2 px-2.5">
         {NAV.map((section) => {
           if (section.finance && !has(ADMIN_FINANCE)) return null;
           return (
             <div key={section.heading || 'overview'} className="mb-3">
               {section.heading && (
-                <div className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div className="px-3 mb-1 mt-2 text-[10px] font-semibold uppercase tracking-wider text-nav-label">
                   {section.heading}
                 </div>
               )}
@@ -88,14 +125,18 @@ export function Sidebar() {
                   key={item.to}
                   to={item.to}
                   end={item.end}
+                  onClick={onClose}
                   className={({ isActive }) =>
                     cn(
-                      'flex items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium',
-                      isActive ? 'bg-accent text-primary' : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      'flex items-center gap-2.5 rounded-lg px-3 min-h-[42px] text-[13px] transition-colors duration-150',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A4D0FF]',
+                      isActive
+                        ? 'bg-nav-active text-white font-semibold'
+                        : 'text-nav-text font-medium hover:bg-nav-hover hover:text-nav-bright',
                     )
                   }
                 >
-                  <item.icon size={16} />
+                  <item.icon size={17} strokeWidth={1.75} />
                   {item.label}
                 </NavLink>
               ))}

@@ -1,11 +1,11 @@
 from datetime import datetime
-from sqlalchemy import CheckConstraint, DateTime, String, Text, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKeyConstraint, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.common.enums import LinkStatus as TrackingLinkStatus
 from app.common.enums import PromotionOwner
 from app.core.database import Base
-from app.core.ids import fk_column, pk_column
+from app.core.ids import EntityId, fk_column, pk_column
 from app.modules.campaigns.models import Campaign  # noqa: F401
 
 
@@ -17,6 +17,12 @@ class TrackingLink(Base):
             "OR (partner_id IS NULL AND business_id IS NOT NULL)",
             name="ck_tracking_links_single_owner",
         ),
+        ForeignKeyConstraint(
+            ["offer_destination_id", "offer_id"],
+            ["offer_destinations.id", "offer_destinations.offer_id"],
+            name="fk_tracking_links_destination_same_offer",
+        ),
+        Index("ix_tracking_links_offer_destination_id", "offer_destination_id"),
     )
 
     id: Mapped[int] = pk_column()
@@ -25,6 +31,7 @@ class TrackingLink(Base):
     partner_id: Mapped[int | None] = fk_column("partner_profiles.id", nullable=True)
     business_id: Mapped[int | None] = fk_column("businesses.id", nullable=True)
     campaign_id: Mapped[int | None] = fk_column("campaigns.id", nullable=True)
+    offer_destination_id: Mapped[int | None] = mapped_column(EntityId, nullable=True)
     destination_url: Mapped[str] = mapped_column(String(500), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255))
     traffic_source: Mapped[str | None] = mapped_column(String(80))

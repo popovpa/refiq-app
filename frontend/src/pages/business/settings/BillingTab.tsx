@@ -97,7 +97,7 @@ export function BillingTab() {
         />
       </div>
       {sub?.status === 'past_due' && (
-        <div className="rounded-lg border border-destructive/30 bg-red-50 px-4 py-3 text-sm text-destructive">
+        <div className="rounded-lg border border-destructive/30 bg-destructive-soft px-4 py-3 text-sm text-destructive">
           Есть задолженность перед RefIQ. Кабинет и выплаты партнёрам доступны, тариф будет приостановлен после льготного периода.
         </div>
       )}

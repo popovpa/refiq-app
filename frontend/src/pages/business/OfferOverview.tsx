@@ -11,6 +11,7 @@ import {
 import { formatMoney, formatNumber } from '@/shared/utils/format';
 import type { BusinessOfferDetailData } from './offerDetailTypes';
 import { partnerDisplayName } from '@/shared/partners/displayName';
+import { chartTheme } from '@/shared/charts/theme';
 
 type AttentionTarget = 'partners' | 'partners-pending' | 'promotion';
 
@@ -188,29 +189,19 @@ export function OfferOverview({
             {hasChartData ? (
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="offerClicksFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(248 78% 62%)" stopOpacity={0.22} />
-                      <stop offset="100%" stopColor="hsl(248 78% 62%)" stopOpacity={0.02} />
-                    </linearGradient>
-                    <linearGradient id="offerConversionsFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="hsl(174 72% 40%)" stopOpacity={0.25} />
-                      <stop offset="100%" stopColor="hsl(174 72% 40%)" stopOpacity={0.02} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(220 16% 90%)" />
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
                   <XAxis
                     dataKey="label"
                     axisLine={false}
                     tickLine={false}
-                    tick={{ fill: 'hsl(220 10% 46%)', fontSize: 11 }}
+                    tick={{ fill: chartTheme.tick, fontSize: 11 }}
                   />
                   <YAxis
                     axisLine={false}
                     tickLine={false}
                     width={32}
                     allowDecimals={false}
-                    tick={{ fill: 'hsl(220 10% 46%)', fontSize: 11 }}
+                    tick={{ fill: chartTheme.tick, fontSize: 11 }}
                   />
                   <Tooltip
                     formatter={(value, name) => [
@@ -229,17 +220,17 @@ export function OfferOverview({
                     type="monotone"
                     dataKey="clicks"
                     name="clicks"
-                    stroke="hsl(248 78% 62%)"
+                    stroke={chartTheme.primary}
                     strokeWidth={2}
-                    fill="url(#offerClicksFill)"
+                    fill={chartTheme.fill}
                   />
                   <Area
                     type="monotone"
                     dataKey="conversions"
                     name="conversions"
-                    stroke="hsl(174 72% 40%)"
+                    stroke={chartTheme.success}
                     strokeWidth={2}
-                    fill="url(#offerConversionsFill)"
+                    fill={chartTheme.fillSuccess}
                   />
                 </AreaChart>
               </ResponsiveContainer>

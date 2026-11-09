@@ -10,7 +10,6 @@ from app.core.permissions import require_partner_role
 from app.modules.campaigns.models import Campaign
 from app.modules.links.models import TrackingLink, TrackingLinkStatus
 from app.modules.offers.models import Offer, OfferPartnerAccess
-from app.modules.offers.service import product_url_for_offer
 from app.modules.links.service import (
     assert_can_activate_link,
     batch_link_stats,
@@ -35,10 +34,12 @@ router = APIRouter()
 class CreateLinkRequest(BaseModel):
     offer_id: int
     name: str = Field(min_length=1, max_length=255)
-    traffic_source: str = Field(min_length=1, max_length=80)
+    traffic_source: str | None = Field(default=None, min_length=1, max_length=80)
     notes: str | None = Field(default=None, max_length=2000)
     destination_url: HttpUrl | None = None
+    offer_destination_id: int | None = None
     campaign_id: int | None = None
+    without_campaign: bool = False
 
 
 class UpdateLinkRequest(BaseModel):
@@ -139,6 +140,12 @@ async def list_links(
     )
     rows = result.all()
     link_ids = [row.TrackingLink.id for row in rows]
+    from app.modules.offers.destination_service import labels_for_destination_ids
+
+    label_map = await labels_for_destination_ids(
+        db,
+        [row.TrackingLink.offer_destination_id for row in rows],
+    )
     stats_map = await batch_link_stats(db, link_ids, profile.id, days)
     summary = await links_summary(db, partner_id=profile.id, days=days, filters=filters)
     filter_options = await link_filter_options(db, profile.id)
@@ -153,6 +160,7 @@ async def list_links(
             row.offer_forbidden_traffic or [],
             stats_map.get(row.TrackingLink.id),
         )
+        | label_map.get(row.TrackingLink.offer_destination_id, {})
         for row in rows
     ]
 
@@ -176,7 +184,7 @@ async def create_link(
     user_id = session_data["user_id"]
     profile = await _get_partner_profile(user_id, db)
     link_name = data.name.strip()
-    traffic_source = data.traffic_source.strip()
+    traffic_source = (data.traffic_source or "").strip() or None
     notes = (data.notes or "").strip() or None
 
     offer = (
@@ -213,11 +221,20 @@ async def create_link(
             403,
         )
 
-    _assert_traffic_source_allowed(offer, traffic_source)
+    if traffic_source:
+        _assert_traffic_source_allowed(offer, traffic_source)
+    if data.without_campaign and data.campaign_id is not None:
+        raise AppError("CAMPAIGN_SELECTION_INVALID", "Нельзя одновременно выбрать кампанию и отказаться от неё.", 400)
 
-    destination = str(data.destination_url) if data.destination_url else await product_url_for_offer(db, offer)
-    if not destination:
-        raise AppError("OFFER_LANDING_MISSING", "Для оффера не задана страница продукта", 400)
+    from app.modules.offers.destination_service import labels_for_destination_ids, resolve_tracking_destination
+
+    destination, offer_destination_id = await resolve_tracking_destination(
+        db,
+        offer,
+        offer_destination_id=data.offer_destination_id,
+        destination_url=str(data.destination_url) if data.destination_url else None,
+        allow_explicit_url=data.offer_destination_id is None,
+    )
 
     if data.campaign_id is not None:
         campaign_id = await resolve_campaign_for_owner(
@@ -227,6 +244,8 @@ async def create_link(
             partner_id=profile.id,
             business_id=None,
         )
+    elif data.without_campaign:
+        campaign_id = None
     else:
         campaign = await create_owned_campaign(
             db,
@@ -246,8 +265,12 @@ async def create_link(
         notes=notes,
         campaign_id=campaign_id,
         partner_id=profile.id,
+        offer_destination_id=offer_destination_id,
     )
-    return _serialize_link(link, offer_name=offer.name, offer_image_url=offer.image_url)
+    payload = _serialize_link(link, offer_name=offer.name, offer_image_url=offer.image_url)
+    labels = await labels_for_destination_ids(db, [link.offer_destination_id] if link.offer_destination_id else [])
+    payload.update(labels.get(link.offer_destination_id, {}))
+    return payload
 
 
 @router.patch("/{link_id}")

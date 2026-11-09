@@ -32,8 +32,8 @@ const tabs = [
 
 const statusLabels: Record<string, { label: string; className: string }> = {
   active: { label: 'Активен', className: 'bg-accent text-primary' },
-  pending: { label: 'Ожидает', className: 'bg-yellow-50 text-yellow-700' },
-  blocked: { label: 'Заблокирован', className: 'bg-red-50 text-red-700' },
+  pending: { label: 'Ожидает', className: 'bg-warning-soft text-warning' },
+  blocked: { label: 'Заблокирован', className: 'bg-destructive-soft text-destructive' },
 };
 
 export function BusinessPartners() {

@@ -157,6 +157,8 @@ def serialize_link(
         "owner_type": link.owner_type,
         "campaign_id": link.campaign_id,
         "campaign_name": campaign_name,
+        "offer_destination_id": link.offer_destination_id,
+        "destination_title": None,
         "partner_name": partner_name,
         "short_code": link.short_code,
         "url": f"https://go.refiq.ru/{link.short_code}",

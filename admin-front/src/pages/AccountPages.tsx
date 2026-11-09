@@ -45,6 +45,20 @@ function FilterSelect({
   );
 }
 
+function RegistrationOrderSelect({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  return (
+    <select
+      className="ui-input h-8 w-56"
+      aria-label="Порядок сортировки"
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+    >
+      <option value="asc">Сначала самые первые</option>
+      <option value="desc">Сначала самые последние</option>
+    </select>
+  );
+}
+
 function useAction(path: string) {
   const toast = useToast();
   const qc = useQueryClient();
@@ -61,8 +75,9 @@ function useAction(path: string) {
 export function BusinessesPage() {
   const { get, set } = useQueryState();
   const page = Number(get('page') || 1);
+  const order = get('order') === 'asc' ? 'asc' : 'desc';
   const query = useQuery({
-    queryKey: ['businesses', get('q'), get('status'), get('has_sites'), get('has_offers'), page],
+    queryKey: ['businesses', get('q'), get('status'), get('has_sites'), get('has_offers'), order, page],
     queryFn: () =>
       api.get<OffsetPage<Record<string, never>>>(
         `/businesses${qs({
@@ -72,6 +87,7 @@ export function BusinessesPage() {
           has_active_offers: get('has_offers') || undefined,
           created_from: get('created_from') || undefined,
           created_to: get('created_to') || undefined,
+          order,
           page,
         })}`,
       ),
@@ -88,6 +104,7 @@ export function BusinessesPage() {
         <FilterSelect value={get('has_sites')} onChange={(has_sites) => set({ has_sites })} options={['true']} allLabel="Сайты" />
         <FilterSelect value={get('has_offers')} onChange={(has_offers) => set({ has_offers })} options={['true']} allLabel="Активные офферы" />
         <input type="date" className="ui-input h-8 w-40" value={get('created_from')} onChange={(e) => set({ created_from: e.target.value })} />
+        <RegistrationOrderSelect value={order} onChange={(next) => set({ order: next })} />
       </div>
       <QueryState loading={query.isLoading} error={query.error} empty={!query.data?.items.length}>
         <DataTable
@@ -99,6 +116,7 @@ export function BusinessesPage() {
             { key: 'partners', header: 'Партнёры', align: 'right' },
             { key: 'conversions', header: 'Конверсии 30д', align: 'right' },
             { key: 'status', header: 'Статус' },
+            { key: 'registered', header: 'Регистрация' },
             { key: 'activity', header: 'Последняя активность' },
           ]}
           rows={(query.data?.items || []).map((row: any) => ({
@@ -110,6 +128,7 @@ export function BusinessesPage() {
             partners: formatNumber(row.partners),
             conversions: formatNumber(row.conversions_30d),
             status: <StatusBadge status={row.status} />,
+            registered: formatDateTime(row.created_at),
             activity: formatDateTime(row.last_activity_at),
           }))}
         />
@@ -251,19 +270,21 @@ function RelatedTable({
 export function PartnersPage() {
   const { get, set } = useQueryState();
   const page = Number(get('page') || 1);
+  const order = get('order') === 'asc' ? 'asc' : 'desc';
   const query = useQuery({
-    queryKey: ['partners', get('q'), get('status'), page],
-    queryFn: () => api.get<OffsetPage<any>>(`/partners${qs({ q: get('q'), status: get('status'), page })}`),
+    queryKey: ['partners', get('q'), get('status'), order, page],
+    queryFn: () => api.get<OffsetPage<any>>(`/partners${qs({ q: get('q'), status: get('status'), order, page })}`),
   });
   return (
     <div>
       <PageTitle title="Партнёры" />
-      <div className="flex gap-2 mb-3">
+      <div className="flex flex-wrap gap-2 mb-3">
         <FilterInput placeholder="Имя или email" defaultValue={get('q')} onBlur={(e) => set({ q: e.target.value })} />
         <FilterSelect value={get('status')} onChange={(status) => set({ status })} options={[
           { value: 'active', label: 'Активен' },
           { value: 'suspended', label: 'Приостановлен' },
         ]} />
+        <RegistrationOrderSelect value={order} onChange={(next) => set({ order: next })} />
       </div>
       <QueryState loading={query.isLoading} error={query.error} empty={!query.data?.items.length}>
         <DataTable
@@ -276,6 +297,8 @@ export function PartnersPage() {
             { key: 'conversions', header: 'Конверсии 30д', align: 'right' },
             { key: 'earnings', header: 'Заработано', align: 'right' },
             { key: 'status', header: 'Статус' },
+            { key: 'registered', header: 'Регистрация' },
+            { key: 'activity', header: 'Последняя активность' },
           ]}
           rows={(query.data?.items || []).map((row: any) => ({
             id: row.id,
@@ -287,6 +310,8 @@ export function PartnersPage() {
             conversions: formatNumber(row.conversions_30d),
             earnings: formatNumber(row.earnings),
             status: <StatusBadge status={row.status} />,
+            registered: formatDateTime(row.created_at),
+            activity: formatDateTime(row.last_activity_at),
           }))}
         />
         <OffsetPager page={page} pages={query.data?.pages || 1} onPage={(next) => set({ page: String(next) })} />

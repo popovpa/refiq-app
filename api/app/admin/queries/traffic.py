@@ -53,7 +53,7 @@ async def list_clicks(
         .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
         .join(Offer, Offer.id == TrackingLink.offer_id)
         .join(Business, Business.id == Offer.business_id)
-        .join(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
+        .outerjoin(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
         .where(keyset_before(Click.created_at, Click.id, cursor))
         .order_by(Click.created_at.desc(), Click.id.desc())
         .limit(limit + 1)
@@ -82,8 +82,8 @@ async def list_clicks(
                 "tracking_link_id": link.id,
                 "offer_id": offer.id,
                 "offer_name": offer.name,
-                "partner_id": partner.id,
-                "partner_name": partner.display_name,
+                "partner_id": partner.id if partner else None,
+                "partner_name": partner.display_name if partner else None,
                 "business_id": business.id,
                 "site_id": site["id"] if site else None,
                 "site_domain": site["domain"] if site else None,
@@ -101,7 +101,7 @@ async def get_click(db: AsyncSession, rqcid: str) -> dict:
             .join(TrackingLink, TrackingLink.id == Click.tracking_link_id)
             .join(Offer, Offer.id == TrackingLink.offer_id)
             .join(Business, Business.id == Offer.business_id)
-            .join(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
+            .outerjoin(PartnerProfile, PartnerProfile.id == TrackingLink.partner_id)
             .where(Click.rqcid == rqcid)
         )
     ).first()
@@ -117,8 +117,8 @@ async def get_click(db: AsyncSession, rqcid: str) -> dict:
         "short_code": link.short_code,
         "offer_id": offer.id,
         "offer_name": offer.name,
-        "partner_id": partner.id,
-        "partner_name": partner.display_name,
+        "partner_id": partner.id if partner else None,
+        "partner_name": partner.display_name if partner else None,
         "business_id": business.id,
         "business_name": business.name,
         "destination_url": link.destination_url,

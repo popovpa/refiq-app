@@ -44,14 +44,14 @@ const tabs = [
 ];
 
 const statusLabels: Record<string, { label: string; className: string }> = {
-  created: { label: 'Создана', className: 'bg-yellow-50 text-yellow-700' },
-  awaiting_confirmation: { label: 'Ожидает подтверждения', className: 'bg-yellow-50 text-yellow-700' },
-  processing: { label: 'В обработке', className: 'bg-blue-50 text-blue-700' },
+  created: { label: 'Создана', className: 'bg-warning-soft text-warning' },
+  awaiting_confirmation: { label: 'Ожидает подтверждения', className: 'bg-warning-soft text-warning' },
+  processing: { label: 'В обработке', className: 'bg-info-soft text-info' },
   paid: { label: 'Выплачено', className: 'bg-accent text-primary' },
-  failed: { label: 'Ошибка', className: 'bg-red-50 text-red-700' },
-  cancelled: { label: 'Отменено', className: 'bg-red-50 text-red-700' },
-  overdue: { label: 'Просрочено', className: 'bg-red-50 text-red-700' },
-  manual_review: { label: 'На проверке', className: 'bg-orange-50 text-orange-700' },
+  failed: { label: 'Ошибка', className: 'bg-destructive-soft text-destructive' },
+  cancelled: { label: 'Отменено', className: 'bg-destructive-soft text-destructive' },
+  overdue: { label: 'Просрочено', className: 'bg-destructive-soft text-destructive' },
+  manual_review: { label: 'На проверке', className: 'bg-warning-soft text-warning' },
 };
 
 export function BusinessPayouts() {

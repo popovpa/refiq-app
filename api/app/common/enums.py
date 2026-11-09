@@ -103,6 +103,17 @@ class LinkStatus(StrEnum):
     DISABLED = "DISABLED"
 
 
+class DestinationType(StrEnum):
+    PRODUCT = "PRODUCT"
+    CATEGORY = "CATEGORY"
+    LANDING = "LANDING"
+
+
+class DestinationStatus(StrEnum):
+    ACTIVE = "active"
+    DISABLED = "disabled"
+
+
 class SiteStatus(StrEnum):
     ACTIVE = "active"
     DISABLED = "disabled"

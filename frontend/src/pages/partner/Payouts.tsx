@@ -56,14 +56,14 @@ interface PayoutsData extends FinancialMode {
 }
 
 const statusMap: Record<string, { label: string; className: string }> = {
-  created: { label: 'Создана', className: 'bg-yellow-50 text-yellow-700' },
-  awaiting_confirmation: { label: 'К выплате', className: 'bg-yellow-50 text-yellow-700' },
-  processing: { label: 'Ожидает выплаты', className: 'bg-blue-50 text-blue-700' },
+  created: { label: 'Создана', className: 'bg-warning-soft text-warning' },
+  awaiting_confirmation: { label: 'К выплате', className: 'bg-warning-soft text-warning' },
+  processing: { label: 'Ожидает выплаты', className: 'bg-info-soft text-info' },
   paid: { label: 'Выплачено', className: 'bg-accent text-primary' },
-  failed: { label: 'Ошибка', className: 'bg-red-50 text-red-700' },
-  overdue: { label: 'Просрочено бизнесом', className: 'bg-red-50 text-red-700' },
-  cancelled: { label: 'Отменено', className: 'bg-red-50 text-red-700' },
-  manual_review: { label: 'На проверке', className: 'bg-orange-50 text-orange-700' },
+  failed: { label: 'Ошибка', className: 'bg-destructive-soft text-destructive' },
+  overdue: { label: 'Просрочено бизнесом', className: 'bg-destructive-soft text-destructive' },
+  cancelled: { label: 'Отменено', className: 'bg-destructive-soft text-destructive' },
+  manual_review: { label: 'На проверке', className: 'bg-warning-soft text-warning' },
 };
 
 function businessName(payout: PartnerPayout) {
@@ -113,7 +113,7 @@ export function PartnerPayouts() {
       <h1 className="ui-page-title">Начисления и выплаты</h1>
       <TestModeBanner visible={data?.financial_mode === 'TEST'} />
       {eligibility && !eligibility.eligible && (
-        <div className="rounded-lg border border-warning/30 bg-orange-50 px-4 py-3 text-sm text-warning">
+        <div className="rounded-lg border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-warning">
           <p className="font-medium">Выплаты пока недоступны</p>
           <p className="mt-0.5">{financeReasonText(eligibility.reason_code, eligibility.reason_message)}</p>
           <Link to="/partner/settings" className="mt-2 inline-block text-sm font-medium underline">

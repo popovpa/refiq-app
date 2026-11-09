@@ -9,9 +9,12 @@ import { useToast } from '@/shared/components/Toast';
 import { formatNumber } from '@/shared/utils/format';
 import { OfferImage } from '@/shared/offers/OfferImage';
 import { GetLinkModal } from '@/shared/offers/GetLinkModal';
+import { PartnerLandingPages } from '@/shared/offers/PartnerLandingPages';
+import type { DestinationListResponse } from '@/shared/offers/destinations';
 import { RequestAccessModal } from '@/shared/offers/RequestAccessModal';
 import { PartnerCreatives } from '@/shared/creatives/PartnerCreatives';
 import { displayTrackingUrl, publicTrackingUrl } from '@/shared/offers/trackingLink';
+import { linkStatusClass, linkStatusLabel } from '@/shared/partner/links/types';
 import {
   accessLabel,
   conversionLabel,
@@ -24,6 +27,7 @@ import {
 import { usePromoteOwnOffer } from '@/shared/offers/usePromoteOwnOffer';
 import { OWN_OFFER_PROMOTE_PENDING_LABEL } from '@/shared/offers/promoteOwnOffer';
 import { cn } from '@/shared/utils/cn';
+import { useDocumentTitle } from '@/shared/documentTitle';
 
 interface Material {
   type: string;
@@ -101,6 +105,9 @@ interface LinkItem {
   url: string;
   traffic_source?: string | null;
   status: string;
+  destination_title?: string | null;
+  campaign_name?: string | null;
+  stats?: { has_stat_data?: boolean; clicks?: number | null; conversions?: number | null } | null;
 }
 
 const ATTRIBUTION_RULE_LABEL = 'Последний допустимый партнёрский переход';
@@ -139,16 +146,16 @@ function partnerStatusBadge(
     return { label: 'Доступ предоставлен', className: 'bg-accent text-primary' };
   }
   if (pending) {
-    return { label: 'На рассмотрении', className: 'bg-yellow-50 text-yellow-700' };
+    return { label: 'На рассмотрении', className: 'bg-warning-soft text-warning' };
   }
   if (rejected) {
-    return { label: 'Доступ отклонён', className: 'bg-red-50 text-red-700' };
+    return { label: 'Доступ отклонён', className: 'bg-destructive-soft text-destructive' };
   }
   if (accessPolicy === 'open') {
     return { label: 'Публичный', className: 'bg-accent text-primary' };
   }
   if (accessPolicy === 'approval') {
-    return { label: 'Требуется одобрение', className: 'bg-yellow-50 text-yellow-700' };
+    return { label: 'Требуется одобрение', className: 'bg-warning-soft text-warning' };
   }
   return { label: 'Только по приглашению', className: 'bg-muted text-muted-foreground' };
 }
@@ -180,6 +187,7 @@ export function PartnerOfferDetail() {
   const { promote: promoteOwn, pending: promoteOwnPending } = usePromoteOwnOffer();
   const queryClient = useQueryClient();
   const [linkOpen, setLinkOpen] = useState(false);
+  const [lockedDestinationId, setLockedDestinationId] = useState<number | null>(null);
   const [requestOpen, setRequestOpen] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
 
@@ -195,6 +203,12 @@ export function PartnerOfferDetail() {
   const rejected = !isOwn && offer?.partner_status === 'rejected';
   const offerPaused = offer?.status === 'paused';
 
+  const { data: destinationsData } = useQuery<DestinationListResponse>({
+    queryKey: ['partner', 'offers', id, 'destinations'],
+    queryFn: () => api.get(`/partner/offers/${id}/destinations?per_page=100`),
+    enabled: !!id,
+  });
+
   const { data: linksData } = useQuery<{ items: LinkItem[] }>({
     queryKey: ['partner', 'links'],
     queryFn: () => api.get('/partner/links'),
@@ -203,9 +217,7 @@ export function PartnerOfferDetail() {
 
   const offerLinks = useMemo(() => {
     if (!linksData?.items || !id) return [];
-    return linksData.items.filter(
-      (link) => String(link.offer_id) === String(id) && link.status === 'ACTIVE',
-    );
+    return linksData.items.filter((link) => String(link.offer_id) === String(id));
   }, [linksData, id]);
 
   const activeLinksCount = useMemo(() => {
@@ -239,6 +251,8 @@ export function PartnerOfferDetail() {
     addToast('Ссылка скопирована', 'success');
   };
 
+  useDocumentTitle(offer?.name?.trim() || (isLoading ? 'Оффер' : 'Оффер не найден'));
+
   if (isLoading) return <Skeleton className="h-full min-h-[480px] rounded-xl" />;
   if (!offer) {
     return <p className="text-muted-foreground">Оффер не найден</p>;
@@ -247,7 +261,7 @@ export function PartnerOfferDetail() {
   const rule = offer.commission_rules?.[0];
   const statusBadge = isOwn
     ? offerPaused
-      ? { label: 'Приостановлен', className: 'bg-yellow-50 text-yellow-700' }
+      ? { label: 'Приостановлен', className: 'bg-warning-soft text-warning' }
       : { label: 'Ваш оффер', className: 'bg-brand-soft text-brand' }
     : partnerStatusBadge(joined, pending, offer.access_policy, rejected);
   const hasStats = hasOfferStatData({ clicks: offer.clicks ?? 0 });
@@ -268,8 +282,16 @@ export function PartnerOfferDetail() {
     promoteOwn(offer.id);
   };
 
-  const openLinkFlow = () => {
+  const chooseDestination = (destinationId?: number) => {
+    const items = destinationsData?.items || [];
+    if (destinationId) return destinationId;
+    if (items.length === 1) return items[0].id;
+    return null;
+  };
+
+  const openLinkFlow = (destinationId?: number) => {
     if (isOwn) return;
+    setLockedDestinationId(chooseDestination(destinationId));
     if (joined || offer.access_policy === 'open') {
       if (!joined) {
         joinOpen.mutate();
@@ -298,7 +320,7 @@ export function PartnerOfferDetail() {
         <div className="flex items-start gap-3 min-w-0">
           <OfferImage src={offer.image_url} name={offer.name} size="detail" />
           <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight truncate">{offer.name}</h1>
+            <h1 className="text-[22px] font-semibold leading-tight tracking-tight truncate">{offer.name}</h1>
             {offer.category && (
               <p className="text-sm text-muted-foreground mt-0.5">{offer.category}</p>
             )}
@@ -321,7 +343,7 @@ export function PartnerOfferDetail() {
               </p>
             )}
             {rejected && offer.rejection_reason && (
-              <p className="text-sm text-red-700 mt-1.5">{offer.rejection_reason}</p>
+              <p className="text-sm text-destructive mt-1.5">{offer.rejection_reason}</p>
             )}
           </div>
         </div>
@@ -337,7 +359,7 @@ export function PartnerOfferDetail() {
               Продвижение недоступно
             </Button>
           )}
-          {!isOwn && joined && <Button onClick={() => setLinkOpen(true)}>Создать ссылку</Button>}
+          {!isOwn && joined && <Button onClick={() => openLinkFlow()}>Получить ссылку</Button>}
           {!isOwn && pending && (
             <>
               <Button disabled variant="secondary">
@@ -459,6 +481,12 @@ export function PartnerOfferDetail() {
         </div>
       </div>
 
+      <PartnerLandingPages
+        items={(destinationsData?.items || []).filter((item) => item.status === 'active' || item.available !== false)}
+        canCreate={Boolean(canCreateLink && !inviteOnlyBlocked)}
+        onCreate={(destinationId) => openLinkFlow(destinationId)}
+      />
+
       {/* Bottom: My promotion | Materials */}
       <div className="grid lg:grid-cols-[1.65fr_1fr] gap-3 flex-1 min-h-0 pb-0.5">
         <div className="ui-card p-4 flex flex-col min-h-0 overflow-hidden">
@@ -478,11 +506,11 @@ export function PartnerOfferDetail() {
                 size="sm"
                 variant="ghost"
                 className="h-7 px-2 text-[13px] font-medium text-primary hover:bg-accent shrink-0"
-                onClick={openLinkFlow}
+                onClick={() => openLinkFlow()}
                 disabled={joinOpen.isPending}
               >
                 <Plus size={14} />
-                Создать ссылку
+                Получить ссылку
               </Button>
             )}
           </div>
@@ -519,21 +547,25 @@ export function PartnerOfferDetail() {
                   className="flex items-center justify-between gap-3 rounded-lg border border-border/70 px-3 py-2"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{linkLabel(link)}</p>
+                    <p className="text-sm font-medium truncate">
+                      {linkLabel(link)}
+                      <span className={cn('ui-badge ml-2', linkStatusClass(link.status))}>{linkStatusLabel(link.status)}</span>
+                    </p>
                     <p className="text-xs text-muted-foreground font-mono truncate mt-0.5">
                       {displayTrackingUrl(link.short_code)}
                     </p>
-                    {myStats && hasOfferStatData(myStats) && activeLinksCount === 1 && (
+                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                      {[link.destination_title, link.campaign_name || 'Без кампании'].filter(Boolean).join(' · ')}
+                    </p>
+                    {link.stats?.has_stat_data && (
                       <p className="text-xs text-muted-foreground mt-0.5">
-                        {formatNumber(myStats.clicks)} кликов · {formatNumber(myStats.conversions)}{' '}
-                        {pluralize(myStats.conversions, 'конверсия', 'конверсии', 'конверсий')} · CR{' '}
-                        {formatNumber(myStats.cr)}%
+                        {formatNumber(link.stats.clicks || 0)} кликов · {formatNumber(link.stats.conversions || 0)} конверсий
                       </p>
                     )}
                   </div>
                   <Button size="sm" variant="secondary" onClick={() => copyLink(link.short_code)}>
                     <Copy size={14} />
-                    Copy
+                    Копировать
                   </Button>
                 </div>
               ))}
@@ -565,7 +597,14 @@ export function PartnerOfferDetail() {
       </div>
 
       {linkOpen && (
-        <GetLinkModal lockedOffer={offer} onClose={() => setLinkOpen(false)} />
+        <GetLinkModal
+          lockedOffer={offer}
+          lockedDestinationId={lockedDestinationId}
+          onClose={() => {
+            setLinkOpen(false);
+            setLockedDestinationId(null);
+          }}
+        />
       )}
       {requestOpen && (
         <RequestAccessModal offerId={offer.id} offerName={offer.name} onClose={() => setRequestOpen(false)} />

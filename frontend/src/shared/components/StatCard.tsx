@@ -3,12 +3,12 @@ import { Info } from 'lucide-react';
 import { cn } from '@/shared/utils/cn';
 
 const toneStyles = {
-  purple: 'bg-brand-soft text-brand',
-  orange: 'bg-orange-50 text-warning',
-  blue: 'bg-blue-50 text-info',
-  teal: 'bg-accent text-primary',
+  purple: 'bg-primary-soft text-primary',
+  orange: 'bg-warning-soft text-warning',
+  blue: 'bg-info-soft text-info',
+  teal: 'bg-aqua-soft text-aqua',
   pink: 'bg-pink-soft text-pink',
-  green: 'bg-emerald-50 text-success',
+  green: 'bg-success-soft text-success',
 } as const;
 
 export type StatTone = keyof typeof toneStyles;
@@ -60,7 +60,7 @@ export function StatCard({
         <span
           className={cn(
             'font-semibold tracking-tight text-foreground leading-none truncate',
-            compact ? 'text-lg' : 'text-[22px]',
+            compact ? 'text-xl' : 'text-[28px]',
           )}
         >
           {value}

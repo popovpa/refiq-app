@@ -88,6 +88,8 @@ from app.modules.users.router import router as users_router
 from app.modules.businesses.router import router as businesses_router
 from app.modules.partners.router import router as partners_router
 from app.modules.offers.router import router as offers_router
+from app.modules.offers.destination_router import business_router as offer_destinations_router
+from app.modules.offers.destination_router import partner_router as partner_destinations_router
 from app.modules.links.router import router as links_router
 from app.modules.links.business_router import router as business_links_router
 from app.modules.campaigns.router import router as partner_campaigns_router
@@ -121,6 +123,8 @@ app.include_router(users_router, prefix="/api/v1/me", tags=["users"])
 app.include_router(businesses_router, prefix="/api/v1/business", tags=["business"])
 app.include_router(partners_router, prefix="/api/v1/partner", tags=["partner"])
 app.include_router(offers_router, prefix="/api/v1/business/offers", tags=["offers"])
+app.include_router(offer_destinations_router, prefix="/api/v1/business/offers", tags=["offers"])
+app.include_router(partner_destinations_router, prefix="/api/v1/partner/offers", tags=["offers"])
 app.include_router(links_router, prefix="/api/v1/partner/links", tags=["links"])
 app.include_router(business_links_router, prefix="/api/v1/business", tags=["links"])
 app.include_router(partner_campaigns_router, prefix="/api/v1/partner/campaigns", tags=["campaigns"])

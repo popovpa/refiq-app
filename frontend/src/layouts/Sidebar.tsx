@@ -1,34 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { PanelLeftClose, PanelLeft, Menu, X } from 'lucide-react';
 import { useAuth } from '@/shared/hooks/useAuth';
 import { cn } from '@/shared/utils/cn';
 import { businessNav, partnerNav, type NavItem } from './nav';
 import { roleContextLabel } from '@/shared/layout/roleContext';
-import logoMark from '@/assets/brand/logo.png';
-import logoLabel from '@/assets/brand/label.png';
+import sidebarLogo from '@/assets/brand/sidebar-logo.png';
+import sidebarMark from '@/assets/brand/sidebar-mark.png';
 
 function Logo({ collapsed }: { collapsed?: boolean }) {
   return (
-    <div
-      className={cn('flex items-center min-w-0', collapsed ? 'justify-center' : 'gap-2')}
-      aria-label="RefIQ"
-    >
-      <img
-        src={logoMark}
-        alt=""
-        className="h-8 w-auto max-w-[40px] object-contain object-center shrink-0 select-none"
-        draggable={false}
-      />
-      {!collapsed && (
-        <img
-          src={logoLabel}
-          alt="RefIQ"
-          className="h-[18px] w-auto max-w-[132px] object-contain object-left select-none"
-          draggable={false}
-        />
+    <img
+      src={collapsed ? sidebarMark : sidebarLogo}
+      alt="RefIQ"
+      className={cn(
+        'object-contain object-left select-none',
+        collapsed ? 'h-8 w-8' : 'h-8 w-auto max-w-[168px]',
       )}
-    </div>
+      draggable={false}
+    />
   );
 }
 
@@ -56,14 +46,15 @@ function NavItemLink({
       aria-label={item.labels.en}
       title={item.labels[lang]}
       className={cn(
-        'flex items-center gap-3 rounded-md text-sm font-medium transition-colors',
-        collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5',
+        'flex items-center gap-2.5 rounded-lg text-[13px] min-h-[42px] transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A4D0FF]',
+        collapsed ? 'justify-center px-2' : 'px-3',
         isActive
-          ? 'bg-accent text-primary'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+          ? 'bg-nav-active text-white font-semibold'
+          : 'text-nav-text font-medium hover:bg-nav-hover hover:text-nav-bright',
       )}
     >
-      <item.icon size={18} strokeWidth={2} />
+      <item.icon size={18} strokeWidth={1.75} />
       {!collapsed && <span>{item.labels[lang]}</span>}
     </NavLink>
   );
@@ -86,6 +77,21 @@ export function Sidebar({
   const displayName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || (lang === 'en' ? 'User' : 'Пользователь');
   const roleLabel = roleContextLabel(activeRole, lang);
   const profileActive = location.pathname === '/profile';
+  const compact = collapsed && !mobileOpen;
+
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onMobileClose?.();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = previous;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [mobileOpen, onMobileClose]);
 
   const openProfile = () => {
     onMobileClose?.();
@@ -95,46 +101,53 @@ export function Sidebar({
   const content = (
     <aside
       className={cn(
-        'h-screen sticky top-0 flex flex-col bg-card border-r border-border/80 transition-all',
-        collapsed ? 'w-[76px]' : 'w-[240px]',
+        'h-screen sticky top-0 flex flex-col bg-nav text-nav-text',
+        compact ? 'w-[76px]' : 'w-[242px]',
+        onMobileClose && 'max-lg:w-[min(284px,calc(100vw-48px))]',
       )}
     >
-      <div className={cn('h-16 flex items-center px-4 border-b border-border/70', collapsed && 'justify-center px-2')}>
-        <Logo collapsed={collapsed} />
+      <div className={cn('h-16 flex items-center px-3', compact && 'justify-center px-2')}>
+        <Logo collapsed={compact} />
         {onMobileClose && (
-          <button className="ml-auto lg:hidden p-1 text-muted-foreground" onClick={onMobileClose}>
+          <button
+            type="button"
+            className="ml-auto lg:hidden p-1.5 rounded-md text-nav-text hover:bg-nav-hover hover:text-nav-bright"
+            onClick={onMobileClose}
+            aria-label="Закрыть меню"
+          >
             <X size={18} />
           </button>
         )}
       </div>
 
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-2.5 py-2 space-y-1 overflow-y-auto">
         {menu.map((item) => (
-          <NavItemLink key={item.key} item={item} collapsed={collapsed} lang={lang} onNavigate={onMobileClose} />
+          <NavItemLink key={item.key} item={item} collapsed={compact} lang={lang} onNavigate={onMobileClose} />
         ))}
       </nav>
 
-      <div className="p-3 border-t border-border/70 space-y-1">
+      <div className="px-2.5 py-3 border-t border-nav-divider space-y-1">
         <button
           type="button"
           onClick={openProfile}
           className={cn(
-            'w-full flex items-center gap-3 rounded-md text-left transition-colors',
-            collapsed ? 'justify-center px-2 py-2' : 'px-3 py-2',
-            profileActive ? 'bg-accent text-primary' : 'hover:bg-muted',
+            'w-full flex items-center gap-2.5 rounded-lg text-left min-h-[42px] transition-colors duration-150',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A4D0FF]',
+            compact ? 'justify-center px-2' : 'px-2.5',
+            profileActive ? 'bg-nav-active text-white' : 'hover:bg-nav-hover',
           )}
         >
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand to-primary text-white flex items-center justify-center text-sm font-semibold shrink-0 overflow-hidden">
+          <div className="w-8 h-8 rounded-full bg-nav-avatar text-nav-ink flex items-center justify-center text-sm font-semibold shrink-0 overflow-hidden">
             {user?.avatar_url ? (
               <img src={user.avatar_url} alt="" className="w-full h-full object-cover" />
             ) : (
               user?.first_name?.[0] || user?.email?.[0]?.toUpperCase() || '?'
             )}
           </div>
-          {!collapsed && (
+          {!compact && (
             <div className="min-w-0">
-              <p className="text-sm font-medium truncate">{displayName}</p>
-              <p className="text-xs text-muted-foreground truncate">{roleLabel}</p>
+              <p className={cn('text-[13px] font-semibold truncate', profileActive ? 'text-white' : 'text-nav-bright')}>{displayName}</p>
+              <p className={cn('text-[11px] truncate', profileActive ? 'text-white/80' : 'text-nav-label')}>{roleLabel}</p>
             </div>
           )}
         </button>
@@ -142,12 +155,13 @@ export function Sidebar({
           type="button"
           onClick={() => setCollapsed((v) => !v)}
           className={cn(
-            'hidden lg:flex w-full items-center gap-3 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors',
-            collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5',
+            'hidden lg:flex w-full items-center gap-2.5 rounded-lg text-[13px] font-medium text-nav-text hover:bg-nav-hover hover:text-nav-bright transition-colors duration-150 min-h-[42px]',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A4D0FF]',
+            compact ? 'justify-center px-2' : 'px-3',
           )}
         >
-          {collapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
-          {!collapsed && <span>Свернуть меню</span>}
+          {compact ? <PanelLeft size={18} strokeWidth={1.75} /> : <PanelLeftClose size={18} strokeWidth={1.75} />}
+          {!compact && <span>Свернуть меню</span>}
         </button>
       </div>
     </aside>
@@ -158,7 +172,7 @@ export function Sidebar({
       <div className="hidden lg:block">{content}</div>
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-40">
-          <div className="absolute inset-0 bg-foreground/30" onClick={onMobileClose} />
+          <div className="absolute inset-0 bg-nav-shade/40" onClick={onMobileClose} />
           <div className="absolute inset-y-0 left-0 z-50">{content}</div>
         </div>
       )}
@@ -171,7 +185,7 @@ export function MobileMenuButton({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="lg:hidden p-2 rounded-md hover:bg-muted text-muted-foreground"
+      className="lg:hidden h-9 w-9 inline-flex items-center justify-center rounded-md border border-border bg-card text-foreground hover:bg-muted"
       aria-label="Открыть меню"
     >
       <Menu size={18} />

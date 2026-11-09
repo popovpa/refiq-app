@@ -65,10 +65,12 @@ async def check_self_deal(
     partner_id: int,
     offer: Offer | None = None,
     business_id: int | None = None,
-    user_id: str | int | None = None,
 ) -> SelfDealDecision:
     """Domain guard: Partner cannot earn affiliate commission on a Business they belong to
     or share a LegalEntity with. Does not use active_role.
+
+    Self-deal is about the partner (not the acting user). A business member approving or
+    inviting another partner must remain allowed.
     """
     resolved_business_id = offer.business_id if offer is not None else business_id
     ids = {
@@ -94,13 +96,6 @@ async def check_self_deal(
     if resolved_business_id in member_business_ids:
         reason = OWN_BUSINESS_OFFER if offer is not None else SAME_USER_BUSINESS_MEMBER
         return _forbidden(reason_code=reason, **ids)
-
-    if user_id is not None:
-        acting_id = parse_id(user_id)
-        if acting_id != partner.user_id:
-            acting_ids = await user_owned_business_ids(db, acting_id)
-            if resolved_business_id in acting_ids:
-                return _forbidden(reason_code=SAME_USER_BUSINESS_MEMBER, **ids)
 
     if (
         business.legal_entity_id
@@ -150,7 +145,7 @@ async def assert_not_self_deal(
     actor_user_id: int | None = None,
     audit: bool = True,
 ) -> SelfDealDecision:
-    decision = await check_self_deal(db, offer=offer, partner_id=partner_id, user_id=user_id)
+    decision = await check_self_deal(db, offer=offer, partner_id=partner_id)
     if decision.allowed:
         return decision
     if audit:

@@ -27,6 +27,7 @@ import { Button } from '@/shared/components/Button';
 import { EmptyState } from '@/shared/components/EmptyState';
 import { formatMoney, formatNumber } from '@/shared/utils/format';
 import { PageHeading } from '@/shared/dateRange/PageHeading';
+import { chartTheme } from '@/shared/charts/theme';
 import { useDateRange, withDateRangeQuery } from '@/shared/dateRange';
 import { OfferImage } from '@/shared/offers/OfferImage';
 
@@ -163,28 +164,28 @@ export function PartnerDashboard() {
       title: 'Создать ссылку',
       description: 'Новая tracking-ссылка для оффера',
       icon: Link2,
-      tone: 'bg-brand-soft text-brand',
+      tone: 'bg-primary-soft text-primary',
       to: '/partner/links',
     },
     {
       title: 'Офферы',
       description: 'Каталог и подключённые офферы',
       icon: Tag,
-      tone: 'bg-orange-50 text-warning',
+      tone: 'bg-warning-soft text-warning',
       to: '/partner/offers',
     },
     {
       title: 'Конверсии',
       description: 'Статусы и комиссии',
       icon: ArrowLeftRight,
-      tone: 'bg-blue-50 text-info',
+      tone: 'bg-info-soft text-info',
       to: '/partner/conversions',
     },
     {
       title: 'Выплаты',
       description: 'Доступно к выводу',
       icon: Banknote,
-      tone: 'bg-accent text-primary',
+      tone: 'bg-success-soft text-success',
       to: '/partner/payouts',
     },
   ];
@@ -225,41 +226,36 @@ export function PartnerDashboard() {
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="earnFill" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(248 78% 62%)" stopOpacity={0.28} />
-                    <stop offset="100%" stopColor="hsl(248 78% 62%)" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(220 16% 90%)" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={chartTheme.grid} />
                 <XAxis
                   dataKey="day"
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: 'hsl(220 10% 46%)', fontSize: 12 }}
+                  tick={{ fill: chartTheme.tick, fontSize: 12 }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  tick={{ fill: 'hsl(220 10% 46%)', fontSize: 12 }}
+                  tick={{ fill: chartTheme.tick, fontSize: 12 }}
                   tickFormatter={(v) => `${Math.round(v / 1000)}k`}
                 />
                 <Tooltip
                   contentStyle={{
                     borderRadius: 10,
-                    border: '1px solid hsl(220 16% 90%)',
-                    boxShadow: '0 8px 24px rgba(16,24,40,0.08)',
+                    border: `1px solid ${chartTheme.grid}`,
+                    background: chartTheme.surface,
+                    boxShadow: 'none',
                   }}
                   formatter={(value) => [`${Number(value ?? 0).toLocaleString('ru-RU')} ₽`, 'Заработок']}
                 />
                 <Area
                   type="monotone"
                   dataKey="value"
-                  stroke="hsl(248 78% 62%)"
-                  strokeWidth={2.5}
-                  fill="url(#earnFill)"
-                  dot={{ r: 4, fill: '#fff', stroke: 'hsl(248 78% 62%)', strokeWidth: 2 }}
-                  activeDot={{ r: 5 }}
+                  stroke={chartTheme.primary}
+                  strokeWidth={2}
+                  fill={chartTheme.fill}
+                  dot={{ r: 3, fill: chartTheme.surface, stroke: chartTheme.primary, strokeWidth: 2 }}
+                  activeDot={{ r: 4 }}
                 />
               </AreaChart>
             </ResponsiveContainer>

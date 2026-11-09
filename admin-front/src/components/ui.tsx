@@ -22,19 +22,19 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-all',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+        'inline-flex items-center justify-center gap-2 rounded-md font-semibold transition-colors duration-150',
+        'focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary/15',
         'disabled:pointer-events-none disabled:opacity-50',
         {
-          'bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm': variant === 'primary',
-          'bg-secondary text-secondary-foreground hover:bg-secondary/80': variant === 'secondary',
-          'hover:bg-muted text-foreground': variant === 'ghost',
-          'bg-destructive text-destructive-foreground hover:bg-destructive/90': variant === 'destructive',
-          'border border-primary/30 bg-card text-primary hover:bg-accent': variant === 'outline',
+          'bg-primary text-primary-foreground hover:bg-primary-hover': variant === 'primary',
+          'border border-line bg-card text-foreground hover:bg-muted': variant === 'secondary',
+          'text-foreground hover:bg-muted': variant === 'ghost',
+          'bg-destructive text-destructive-foreground hover:bg-[#A34747]': variant === 'destructive',
+          'border border-line bg-card text-primary hover:bg-primary-soft': variant === 'outline',
         },
         {
-          'h-8 px-3 text-xs': size === 'sm',
-          'h-9 px-3.5 text-sm': size === 'md',
+          'h-[30px] px-3 text-xs': size === 'sm',
+          'h-[38px] px-4 text-[13px]': size === 'md',
           'h-11 px-5 text-sm': size === 'lg',
         },
         className,
@@ -75,11 +75,11 @@ export function StatusBadge({ status }: { status?: string | null }) {
   const value = (status || 'unknown').toLowerCase();
   const tone =
     ['active', 'approved', 'accepted', 'paid', 'healthy', 'ok', 'success', 'attributed', 'calculated', 'connected', 'verified'].includes(value)
-      ? 'bg-success/10 text-success'
+      ? 'bg-success-soft text-success'
       : ['paused', 'pending', 'pending_verification', 'waiting_approval', 'degraded', 'no_activity', 'awaiting_first_request', 'processing', 'duplicate', 'review_required', 'draft'].includes(value)
-        ? 'bg-warning/10 text-warning'
+        ? 'bg-warning-soft text-warning'
         : ['suspended', 'blocked', 'rejected', 'error', 'failed', 'cancelled', 'inactive', 'disabled', 'not_connected'].includes(value)
-          ? 'bg-destructive/10 text-destructive'
+          ? 'bg-destructive-soft text-destructive'
           : 'bg-muted text-muted-foreground';
   return <span className={cn('ui-badge', tone)}>{statusLabel(status)}</span>;
 }
@@ -110,7 +110,7 @@ export function Kv({ label, children }: { label: string; children: ReactNode }) 
 export function PageTitle({ title, actions }: { title: string; actions?: ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 mb-4">
-      <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+      <h1 className="ui-page-title">{title}</h1>
       {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
     </div>
   );

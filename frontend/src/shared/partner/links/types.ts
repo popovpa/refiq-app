@@ -17,6 +17,8 @@ export interface PartnerLinkItem {
   short_code: string;
   url: string;
   destination_url?: string | null;
+  destination_title?: string | null;
+  campaign_name?: string | null;
   traffic_source?: string | null;
   notes?: string | null;
   status: string;

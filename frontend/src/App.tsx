@@ -28,10 +28,12 @@ import { ProfilePage } from '@/pages/ProfilePage';
 import { NotificationsPage } from '@/pages/NotificationsPage';
 import { NotFoundPage } from '@/pages/NotFoundPage';
 import { ToastProvider } from '@/shared/components/Toast';
+import { DocumentTitle } from '@/shared/documentTitle';
 
 export default function App() {
   return (
     <ToastProvider>
+      <DocumentTitle />
       <Routes>
         <Route element={<AuthLayout />}>
           <Route path="/login" element={<LoginPage />} />

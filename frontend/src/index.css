@@ -13,7 +13,12 @@
 
   body {
     @apply bg-background text-foreground font-sans;
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'tnum';
+  }
+
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: theme('colors.primary.DEFAULT');
   }
 
   #root {
@@ -23,44 +28,45 @@
 
 @layer components {
   .ui-card {
-    @apply bg-card rounded-xl border border-border/80 shadow-card;
+    @apply bg-card rounded-xl border border-border shadow-card;
   }
 
   .ui-page-title {
-    @apply text-[22px] font-semibold tracking-tight text-foreground;
+    @apply text-[28px] font-bold leading-tight tracking-tight text-foreground;
   }
 
   .ui-section-title {
-    @apply text-[15px] font-semibold text-foreground;
+    @apply text-[17px] font-semibold tracking-tight text-foreground;
   }
 
   .ui-table {
-    @apply w-full text-sm;
+    @apply w-full text-[13px];
   }
 
   .ui-table thead th {
-    @apply text-left px-4 py-3 text-xs font-medium text-muted-foreground;
+    @apply text-left px-4 py-3.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground bg-[#FAFBFE];
   }
 
   .ui-table tbody td {
-    @apply px-4 py-3.5 border-t border-border/70;
+    @apply px-4 py-3.5 border-t border-[#EDF0F5] align-middle;
   }
 
   .ui-table tbody tr {
-    @apply transition-colors hover:bg-muted/40;
+    @apply transition-colors duration-150 hover:bg-[#F5F9FF];
   }
 
   .ui-input {
-    @apply w-full h-10 px-3 rounded-md border bg-card text-sm
-      placeholder:text-muted-foreground/70
-      focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/40;
+    @apply w-full h-[42px] px-3 rounded-md border border-input bg-card text-sm text-foreground
+      placeholder:text-[#A3ADBD]
+      focus:outline-none focus:ring-4 focus:ring-primary/15 focus:border-primary/40
+      disabled:bg-muted disabled:text-muted-foreground;
   }
 
   .ui-label {
-    @apply block text-sm font-medium mb-1.5 text-foreground;
+    @apply block text-[13px] font-medium mb-1.5 text-foreground;
   }
 
   .ui-badge {
-    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium;
   }
 }
