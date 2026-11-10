@@ -14,7 +14,7 @@ import {
   type DateRangeState,
 } from './types';
 
-export function useDateRange(): DateRangeState & {
+export function useDateRange(defaultPreset: DateRangePreset = DEFAULT_DATE_RANGE_PRESET): DateRangeState & {
   setPreset: (preset: DateRangePreset) => void;
   setCustomRange: (from: string, to: string) => void;
   apiParams: Record<string, string>;
@@ -27,19 +27,19 @@ export function useDateRange(): DateRangeState & {
   const nowRef = useRef(new Date());
 
   const range = useMemo(
-    () => parseDateRangeSearch(new URLSearchParams(searchKey), timezone, nowRef.current),
-    [searchKey, timezone],
+    () => parseDateRangeSearch(new URLSearchParams(searchKey), timezone, nowRef.current, defaultPreset),
+    [searchKey, timezone, defaultPreset],
   );
 
   useEffect(() => {
     const params = new URLSearchParams(searchKey);
     if (dateRangeHasExplicitValue(params)) return;
     const next = dateRangeSearchParams(
-      dateRangeFromPreset(DEFAULT_DATE_RANGE_PRESET, timezone, nowRef.current),
+      dateRangeFromPreset(defaultPreset, timezone, nowRef.current),
       params,
     );
     setSearchParams(next, { replace: true });
-  }, [searchKey, setSearchParams, timezone]);
+  }, [defaultPreset, searchKey, setSearchParams, timezone]);
 
   const apply = useCallback(
     (state: DateRangeState) => {

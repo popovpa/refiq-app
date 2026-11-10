@@ -6,6 +6,7 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   headers?: Record<string, string>;
+  signal?: AbortSignal;
 }
 
 export interface ApiError {
@@ -26,7 +27,7 @@ class ApiClient {
   }
 
   async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    const { method = 'GET', body, headers = {} } = options;
+    const { method = 'GET', body, headers = {}, signal } = options;
 
     const config: RequestInit = {
       method,
@@ -35,6 +36,7 @@ class ApiClient {
         ...headers,
       },
       credentials: 'include',
+      signal,
     };
 
     if (body !== undefined) {
@@ -71,8 +73,8 @@ class ApiClient {
     return response.json();
   }
 
-  get<T>(endpoint: string) {
-    return this.request<T>(endpoint);
+  get<T>(endpoint: string, options?: { signal?: AbortSignal }) {
+    return this.request<T>(endpoint, options);
   }
 
   post<T>(endpoint: string, body?: unknown) {

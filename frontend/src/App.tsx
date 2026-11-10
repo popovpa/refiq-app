@@ -16,6 +16,7 @@ import { BusinessOfferDetail } from '@/pages/business/OfferDetail';
 import { BusinessPartners } from '@/pages/business/Partners';
 import { BusinessConversions } from '@/pages/business/Conversions';
 import { BusinessPayouts } from '@/pages/business/Payouts';
+import { AnalyticsPage } from '@/features/analytics/AnalyticsPage';
 import { BusinessSettings } from '@/pages/business/Settings';
 import { PartnerDashboard } from '@/pages/partner/Dashboard';
 import { PartnerOffers } from '@/pages/partner/Offers';
@@ -55,6 +56,8 @@ export default function App() {
           <Route path="/business/offers/:id" element={<BusinessOfferDetail />} />
           <Route path="/business/partners" element={<BusinessPartners />} />
           <Route path="/business/conversions" element={<BusinessConversions />} />
+          <Route path="/business/analytics" element={<AnalyticsPage />} />
+          <Route path="/business/analytics/:tab" element={<AnalyticsPage />} />
           <Route path="/business/payouts" element={<BusinessPayouts />} />
           <Route path="/business/billing" element={<Navigate to="/business/settings/billing" replace />} />
           <Route path="/business/settings/billing" element={<BusinessSettings />} />
@@ -64,6 +67,8 @@ export default function App() {
           <Route path="/partner/offers/:id" element={<PartnerOfferDetail />} />
           <Route path="/partner/links" element={<PartnerLinks />} />
           <Route path="/partner/conversions" element={<PartnerConversions />} />
+          <Route path="/partner/analytics" element={<AnalyticsPage />} />
+          <Route path="/partner/analytics/:tab" element={<AnalyticsPage />} />
           <Route path="/partner/payouts" element={<PartnerPayouts />} />
           <Route path="/partner/settings" element={<PartnerSettings />} />
         </Route>

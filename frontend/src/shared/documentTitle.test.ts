@@ -36,6 +36,9 @@ describe('routeDocumentTitle', () => {
     expect(routeDocumentTitle('/partner/conversions')).toBe('Конверсии');
     expect(routeDocumentTitle('/partner/payouts')).toBe('Начисления и выплаты');
     expect(routeDocumentTitle('/partner/settings')).toBe('Настройки');
+    expect(routeDocumentTitle('/business/analytics')).toBe('Аналитика');
+    expect(routeDocumentTitle('/business/analytics/funnel')).toBe('Аналитика');
+    expect(routeDocumentTitle('/partner/analytics/sources')).toBe('Аналитика');
     expect(routeDocumentTitle('/profile')).toBe('Профиль пользователя');
     expect(routeDocumentTitle('/notifications')).toBe('Уведомления');
     expect(routeDocumentTitle('/login')).toBe('Вход');

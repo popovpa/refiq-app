@@ -1,4 +1,4 @@
-import { LayoutDashboard, Tag, Users, ArrowLeftRight, Wallet, Settings, Link2 } from 'lucide-react';
+import { LayoutDashboard, Tag, Users, ArrowLeftRight, Wallet, Settings, Link2, BarChart3 } from 'lucide-react';
 
 export type NavKey =
   | 'overview'
@@ -6,6 +6,7 @@ export type NavKey =
   | 'partners'
   | 'links'
   | 'conversions'
+  | 'analytics'
   | 'payouts'
   | 'settings';
 
@@ -22,6 +23,7 @@ export const businessNav: NavItem[] = [
   { key: 'offers', path: '/business/offers', icon: Tag, labels: { ru: 'Офферы', en: 'Offers' } },
   { key: 'partners', path: '/business/partners', icon: Users, labels: { ru: 'Партнёры', en: 'Partners' } },
   { key: 'conversions', path: '/business/conversions', icon: ArrowLeftRight, labels: { ru: 'Конверсии', en: 'Conversions' } },
+  { key: 'analytics', path: '/business/analytics', icon: BarChart3, labels: { ru: 'Аналитика', en: 'Analytics' } },
   { key: 'payouts', path: '/business/payouts', icon: Wallet, labels: { ru: 'Выплаты', en: 'Payouts' } },
   { key: 'settings', path: '/business/settings', icon: Settings, labels: { ru: 'Настройки', en: 'Settings' } },
 ];
@@ -31,6 +33,7 @@ export const partnerNav: NavItem[] = [
   { key: 'offers', path: '/partner/offers', icon: Tag, labels: { ru: 'Офферы', en: 'Offers' } },
   { key: 'links', path: '/partner/links', icon: Link2, labels: { ru: 'Мои ссылки', en: 'My links' } },
   { key: 'conversions', path: '/partner/conversions', icon: ArrowLeftRight, labels: { ru: 'Конверсии', en: 'Conversions' } },
+  { key: 'analytics', path: '/partner/analytics', icon: BarChart3, labels: { ru: 'Аналитика', en: 'Analytics' } },
   { key: 'payouts', path: '/partner/payouts', icon: Wallet, labels: { ru: 'Выплаты', en: 'Payouts' } },
   { key: 'settings', path: '/partner/settings', icon: Settings, labels: { ru: 'Настройки', en: 'Settings' } },
 ];

@@ -20,6 +20,7 @@ export function parseDateRangeSearch(
   search: DateRangeSearch,
   timeZone: string,
   now: Date = new Date(),
+  defaultPreset: DateRangePreset = DEFAULT_DATE_RANGE_PRESET,
 ): DateRangeState {
   const period = search.get('period');
   const from = search.get('from');
@@ -40,7 +41,7 @@ export function parseDateRangeSearch(
     return dateRangeFromPreset(period, timeZone, now);
   }
 
-  return dateRangeFromPreset(DEFAULT_DATE_RANGE_PRESET, timeZone, now);
+  return dateRangeFromPreset(defaultPreset, timeZone, now);
 }
 
 export function serializeDateRange(state: DateRangeState): DateRangeQuery {

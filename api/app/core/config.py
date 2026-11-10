@@ -105,6 +105,13 @@ class Settings(BaseSettings):
     AUDIT_OUTBOX_SHUTDOWN_TIMEOUT: float = 10.0
     AUDIT_OUTBOX_RETENTION_SECONDS: int = 0
 
+    CLICKHOUSE_URL: str = "http://clickhouse:8123"
+    CLICKHOUSE_DATABASE: str = "refiq"
+    CLICKHOUSE_USER: str = "default"
+    CLICKHOUSE_PASSWORD: str = ""
+    CLICKHOUSE_TABLE: str = "clickstream_events"
+    CLICKHOUSE_TIMEOUT_SECONDS: float = 8.0
+
     @property
     def s3_enabled(self) -> bool:
         return bool(self.S3_ACCESS_KEY_ID and self.S3_SECRET_ACCESS_KEY)

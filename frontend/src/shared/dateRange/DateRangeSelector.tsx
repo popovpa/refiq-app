@@ -25,8 +25,14 @@ function formatCustomLabel(state: { dateFrom: Date; dateTo: Date; timezone: stri
   return `${fmt(from)} – ${fmt(to)}`;
 }
 
-export function DateRangeSelector({ className }: { className?: string }) {
-  const range = useDateRange();
+export function DateRangeSelector({
+  className,
+  defaultPreset,
+}: {
+  className?: string;
+  defaultPreset?: DateRangePreset;
+}) {
+  const range = useDateRange(defaultPreset);
   const [open, setOpen] = useState(false);
   const [customOpen, setCustomOpen] = useState(!range.preset);
   const fromParts = calendarDateFromInstant(range.dateFrom, range.timezone);

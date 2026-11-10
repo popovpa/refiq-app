@@ -44,6 +44,8 @@ export function routeDocumentTitle(pathname: string): string | null {
 
   if (/^\/business\/offers\/[^/]+\/edit$/.test(path)) return 'Редактирование оффера';
   if (path === '/business/settings' || path.startsWith('/business/settings/')) return 'Настройки';
+  if (path === '/business/analytics' || path.startsWith('/business/analytics/')) return 'Аналитика';
+  if (path === '/partner/analytics' || path.startsWith('/partner/analytics/')) return 'Аналитика';
 
   return 'Страница не найдена';
 }
