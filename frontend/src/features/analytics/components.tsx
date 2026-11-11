@@ -1,33 +1,30 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ComposedChart,
-  Legend,
-  Line,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Scatter,
-  ScatterChart,
-  Tooltip,
-  XAxis,
-  YAxis,
-  ZAxis,
-} from 'recharts';
 import type { LucideIcon } from 'lucide-react';
 import { StatCard, type StatTone } from '@/shared/components/StatCard';
 import { Skeleton } from '@/shared/components/Skeleton';
-import { chartTheme } from '@/shared/charts/theme';
 import { cn } from '@/shared/utils/cn';
-import { formatBucket, formatChange, formatMetric, qualityNote } from './format';
-import { formatNumber as formatCount } from '@/shared/utils/format';
+import { formatBucket, formatChange, formatMetric, formatPercent, qualityNote } from './format';
+import { palette } from './charts/theme';
 import type { Metric } from './types';
 
-export const palette = ['#4E70BE', '#586AD9', '#287F61', '#6E62A8', '#1F6A6A', '#99661E', '#B6C9DE'];
+const ComboChartView = lazy(() => import('./charts/views').then((mod) => ({ default: mod.ComboChart })));
+const DonutChartView = lazy(() => import('./charts/views').then((mod) => ({ default: mod.DonutChart })));
+const HorizontalBarChartView = lazy(() => import('./charts/views').then((mod) => ({ default: mod.HorizontalBarChart })));
+const ColumnChartView = lazy(() => import('./charts/views').then((mod) => ({ default: mod.ColumnChart })));
+const LineChartView = lazy(() => import('./charts/views').then((mod) => ({ default: mod.LineChart })));
+const BubbleChartView = lazy(() => import('./charts/views').then((mod) => ({ default: mod.BubbleChart })));
+const FunnelChartView = lazy(() => import('./charts/views').then((mod) => ({ default: mod.FunnelChart })));
+const SankeyChartView = lazy(() => import('./charts/views').then((mod) => ({ default: mod.SankeyChart })));
+
+function ChartFrame({ height, children }: { height: number; children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+  useEffect(() => setReady(true), []);
+  if (!ready) return <div style={{ height }} />;
+  return <Suspense fallback={<div style={{ height }} />}>{children}</Suspense>;
+}
+
+export { palette };
 
 export function AnalyticsSkeleton() {
   return (
@@ -121,88 +118,44 @@ export function TrendChart({
 }: {
   rows: Array<{ bucket: string; clicks: number; conversions: number; cr: string | null }>;
 }) {
-  const [visible, setVisible] = useState({ clicks: true, conversions: true, cr: true });
-  const data = rows.map((row) => ({
+  const data = useMemo(() => rows.map((row) => ({
     label: formatBucket(row.bucket),
     clicks: row.clicks,
     conversions: row.conversions,
     cr: row.cr === null ? null : Number(row.cr),
-  }));
+  })), [rows]);
   if (!data.length) return <EmptyChart />;
   return (
-    <div className="min-w-0">
-      <div className="mb-2 flex flex-wrap gap-2">
-        {([
-          ['clicks', 'Клики', chartTheme.series],
-          ['conversions', 'Конверсии', chartTheme.success],
-          ['cr', 'CR', chartTheme.primary],
-        ] as const).map(([key, label, color]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setVisible((current) => ({ ...current, [key]: !current[key] }))}
-            className={cn('rounded-md px-2 py-1 text-xs font-semibold', visible[key] ? 'bg-muted text-foreground' : 'text-muted-foreground')}
-          >
-            <span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: color }} />
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="h-72 w-full min-w-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-            <CartesianGrid stroke={chartTheme.grid} vertical={false} />
-            <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis yAxisId="left" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} width={36} />
-            <YAxis yAxisId="right" orientation="right" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} width={36} unit="%" />
-            <Tooltip />
-            <Line yAxisId="left" type="monotone" dataKey="clicks" name="Клики" stroke={chartTheme.series} strokeWidth={2} dot={false} hide={!visible.clicks} />
-            <Line yAxisId="left" type="monotone" dataKey="conversions" name="Конверсии" stroke={chartTheme.success} strokeWidth={2} dot={false} hide={!visible.conversions} />
-            <Line yAxisId="right" type="monotone" dataKey="cr" name="CR, %" stroke={chartTheme.primary} strokeWidth={2} dot={false} hide={!visible.cr} connectNulls={false} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
+    <ChartFrame height={288}>
+      <ComboChartView rows={data} />
+    </ChartFrame>
   );
 }
 
 export function Donut({
   rows,
   total,
+  caption = 'кликов',
 }: {
   rows: Array<{ label: string; clicks: number }>;
   total: number;
+  caption?: string;
 }) {
   const data = rows.filter((row) => row.clicks > 0);
   if (!data.length) return <EmptyChart />;
   return (
-    <div className="min-w-0">
-      <div className="relative h-52">
-        <ResponsiveContainer width="100%" height="100%">
-          <PieChart>
-            <Pie data={data} dataKey="clicks" nameKey="label" innerRadius={58} outerRadius={82} paddingAngle={2} stroke="none">
-              {data.map((row, index) => (
-                <Cell key={row.label} fill={palette[index % palette.length]} />
-              ))}
-            </Pie>
-            <Tooltip />
-          </PieChart>
-        </ResponsiveContainer>
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="text-center">
-            <div className="text-lg font-semibold text-foreground">{formatCount(total)}</div>
-            <div className="text-[11px] text-muted-foreground">кликов</div>
-          </div>
-        </div>
-      </div>
-      <ul className="mt-2 space-y-1">
+    <div className="grid min-w-0 items-center gap-3 sm:grid-cols-[minmax(0,1.2fr)_minmax(128px,0.8fr)]">
+      <ChartFrame height={220}>
+        <DonutChartView rows={data} total={total} caption={caption} />
+      </ChartFrame>
+      <ul className="space-y-1">
         {data.map((row, index) => (
           <li key={row.label} className="flex items-center justify-between gap-3 text-xs">
             <span className="flex min-w-0 items-center gap-2">
               <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: palette[index % palette.length] }} />
               <span className="truncate">{row.label}</span>
             </span>
-            <span className="text-muted-foreground">{formatCount(row.clicks)}</span>
+            <span className="text-muted-foreground">{total > 0 ? formatPercent((row.clicks / total) * 100) : '—'}</span>
           </li>
         ))}
       </ul>
@@ -213,61 +166,38 @@ export function Donut({
 export function BubbleChart({
   rows,
 }: {
-  rows: Array<{ label: string; clicks: number; conversions: number; epc: string | null; cr: string | null; commission: string | null; kind: string }>;
+  rows: Array<{ label: string; clicks: number; conversions: number; epc: string | null; cr: string | null; commission: string | null; currency?: string | null; kind?: string }>;
 }) {
-  const data = rows
-    .filter((row) => row.epc !== null)
-    .map((row, index) => ({
-      ...row,
-      x: row.clicks,
-      y: Number(row.epc),
-      z: Math.max(row.conversions, 1),
-      fill: palette[index % palette.length],
-    }));
+  const data = useMemo(
+    () => rows.filter((row) => row.epc !== null && Number.isFinite(Number(row.epc))),
+    [rows],
+  );
   if (!data.length) return <EmptyChart label="Нет источников с рассчитанным EPC" />;
   return (
-    <div className="h-72 min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
-        <ScatterChart margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke={chartTheme.grid} />
-          <XAxis dataKey="x" name="Клики" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis dataKey="y" name="EPC" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
-          <ZAxis dataKey="z" range={[80, 360]} />
-          <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-          <Scatter data={data} name="Источник">
-            {data.map((row) => (
-              <Cell key={row.label} fill={row.fill} />
-            ))}
-          </Scatter>
-        </ScatterChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartFrame height={288}>
+      <BubbleChartView rows={data} />
+    </ChartFrame>
   );
 }
 
 export function MetricLines({
   rows,
   lines,
+  unit = 'percent',
 }: {
   rows: Array<Record<string, string | number | null>>;
   lines: Array<{ key: string; name: string; color: string }>;
+  unit?: 'percent' | 'seconds';
 }) {
-  if (!rows.length) return <EmptyChart />;
+  const hasValue = rows.some((row) => lines.some((line) => {
+    const value = row[line.key];
+    return value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+  }));
+  if (!rows.length || !hasValue) return <EmptyChart />;
   return (
-    <div className="h-72 min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke={chartTheme.grid} vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} width={40} />
-          <Tooltip />
-          <Legend wrapperStyle={{ fontSize: 12 }} />
-          {lines.map((line) => (
-            <Line key={line.key} type="monotone" dataKey={line.key} name={line.name} stroke={line.color} strokeWidth={2} dot={false} connectNulls={false} />
-          ))}
-        </ComposedChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartFrame height={288}>
+      <LineChartView rows={rows} lines={lines} unit={unit} />
+    </ChartFrame>
   );
 }
 
@@ -275,71 +205,46 @@ export function MilestoneBars({ rows }: { rows: Array<{ milestone: number; value
   const data = rows.map((row) => ({ label: `${row.milestone}%`, value: row.value === null ? null : Number(row.value) }));
   if (data.every((row) => row.value === null)) return <EmptyChart label="Нет измерений прокрутки" />;
   return (
-    <div className="h-64 min-w-0">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data}>
-          <CartesianGrid stroke={chartTheme.grid} vertical={false} />
-          <XAxis dataKey="label" tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: chartTheme.tick, fontSize: 11 }} axisLine={false} tickLine={false} width={36} unit="%" />
-          <Tooltip />
-          <Bar dataKey="value" name="Доля, %" fill={chartTheme.series} radius={[6, 6, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <ChartFrame height={256}>
+      <ColumnChartView rows={data} />
+    </ChartFrame>
   );
 }
 
 export function EfficiencyList({
   rows,
-  valueKey,
   formula,
 }: {
   rows: Array<{ label: string; value: string | null }>;
-  valueKey?: string;
   formula: string;
 }) {
-  const numbers = rows.map((row) => Number(row.value)).filter((value) => Number.isFinite(value));
-  const max = Math.max(...numbers, 0);
   if (!rows.length) return <EmptyChart />;
+  const chartRows = rows.map((row) => ({
+    label: row.label,
+    value: row.value === null || !Number.isFinite(Number(row.value)) ? null : Number(row.value),
+  }));
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <p className="text-xs text-muted-foreground">{formula}</p>
-      {rows.map((row) => {
-        const numeric = Number(row.value);
-        const width = Number.isFinite(numeric) && max > 0 ? Math.max(4, (numeric / max) * 100) : 0;
-        return (
-          <div key={row.label}>
-            <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-              <span className="truncate font-medium text-foreground">{row.label}</span>
-              <span className="shrink-0 text-muted-foreground">{valueKey === 'count' ? formatCount(row.value) : row.value === null ? '—' : `${formatCount(row.value)}%`}</span>
-            </div>
-            <div className="h-2 rounded-full bg-muted">
-              <div className="h-2 rounded-full bg-brand" style={{ width: `${width}%` }} />
-            </div>
-          </div>
-        );
-      })}
+      <ChartFrame height={Math.max(148, chartRows.length * 36)}>
+        <HorizontalBarChartView rows={chartRows} />
+      </ChartFrame>
     </div>
   );
 }
 
 export function FlowList({ rows }: { rows: Array<{ source: string; target: string; value: number }> }) {
-  const max = Math.max(...rows.map((row) => row.value), 0);
   if (!rows.length) return <EmptyChart label="Недостаточно связанных просмотров для пути" />;
+  const limited = rows.slice(0, 12);
+  const nodes = new Set<string>();
+  limited.forEach((row) => {
+    nodes.add(row.source);
+    nodes.add(row.target);
+  });
   return (
-    <div className="space-y-2">
-      {rows.map((row) => (
-        <div key={`${row.source}-${row.target}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 text-xs">
-          <div className="min-w-0">
-            <p className="truncate text-foreground">{row.source} → {row.target}</p>
-            <div className="mt-1 h-1.5 rounded-full bg-muted">
-              <div className="h-1.5 rounded-full bg-[#6E62A8]" style={{ width: `${max ? (row.value / max) * 100 : 0}%` }} />
-            </div>
-          </div>
-          <span className="text-muted-foreground">{formatCount(row.value)}</span>
-        </div>
-      ))}
-    </div>
+    <ChartFrame height={Math.max(240, nodes.size * 36)}>
+      <SankeyChartView rows={limited} />
+    </ChartFrame>
   );
 }
 
@@ -348,27 +253,11 @@ export function FunnelGraphic({
 }: {
   steps: Array<{ label: string; value: string | null; rate: string | null; available: boolean; definition: string }>;
 }) {
-  const colors = ['#4E70BE', '#586AD9', '#6E62A8', '#287F61', '#1F6A6A'];
+  if (!steps.length) return <EmptyChart />;
   return (
-    <div className="space-y-2">
-      {steps.map((step, index) => (
-        <div key={step.label} title={step.definition} className="mx-auto" style={{ width: `${100 - index * 12}%` }}>
-          <div
-            className={cn('flex h-14 items-center justify-between gap-3 px-4', step.available ? 'text-white' : 'text-foreground')}
-            style={{
-              background: step.available ? colors[index] : '#E6EDF5',
-              clipPath: 'polygon(3% 0, 97% 0, 100% 100%, 0 100%)',
-            }}
-          >
-            <span className="truncate text-sm font-semibold">{step.label}</span>
-            <span className="shrink-0 text-right text-xs">
-              <span className="block text-sm font-semibold">{step.available ? formatCount(step.value) : '—'}</span>
-              <span>{step.available && step.rate ? `${formatCount(step.rate)}%` : step.available ? '' : 'недоступно'}</span>
-            </span>
-          </div>
-        </div>
-      ))}
-    </div>
+    <ChartFrame height={380}>
+      <FunnelChartView steps={steps} />
+    </ChartFrame>
   );
 }
 
@@ -378,23 +267,14 @@ export function LossList({
   rows: Array<{ from: string; to: string; retained: string | null; lost: string | null; available: boolean }>;
 }) {
   if (!rows.length) return <EmptyChart />;
+  const chartRows = rows.map((row) => ({
+    label: `${row.from} → ${row.to}`,
+    value: row.available && row.lost !== null && Number.isFinite(Number(row.lost)) ? Number(row.lost) : null,
+  }));
   return (
-    <div className="space-y-3">
-      {rows.map((row) => (
-        <div key={`${row.from}-${row.to}`}>
-          <div className="mb-1 flex justify-between gap-2 text-xs">
-            <span className="text-foreground">{row.from} → {row.to}</span>
-            <span className="text-muted-foreground">{row.available && row.lost !== null ? `потери ${formatCount(row.lost)}%` : '—'}</span>
-          </div>
-          <div className="h-2 rounded-full bg-muted">
-            <div
-              className="h-2 rounded-full bg-brand"
-              style={{ width: row.available && row.retained !== null ? `${Math.min(100, Number(row.retained))}%` : '0%' }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
+    <ChartFrame height={Math.max(148, chartRows.length * 36)}>
+      <HorizontalBarChartView rows={chartRows} />
+    </ChartFrame>
   );
 }
 

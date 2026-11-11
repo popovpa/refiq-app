@@ -80,6 +80,7 @@ export function FunnelTab({ data }: { data: FunnelData }) {
             <Donut
               rows={data.statuses.map((item) => ({ label: item.label, clicks: item.count }))}
               total={data.statuses.reduce((sum, item) => sum + item.count, 0)}
+              caption="конверсий"
             />
           </Panel>
         </div>
@@ -223,6 +224,7 @@ export function PerformanceTab({ data }: { data: PerformanceData }) {
               { key: 'mobile', name: 'Mobile', color: chartTheme.series },
               { key: 'desktop', name: 'Desktop', color: chartTheme.success },
             ]}
+            unit="seconds"
           />
         </Panel>
         <Panel title="Самые медленные страницы" className="xl:col-span-2">

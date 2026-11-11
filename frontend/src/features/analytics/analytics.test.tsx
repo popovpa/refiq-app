@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { analyticsQuery, formatMetric } from './format';
+import { refiqChartBaseOptions } from './charts/theme';
 import { OverviewTab } from './tabs';
 import { ANALYTICS_TABS, BUSINESS_FILTERS, PARTNER_FILTERS, type Metric, type OverviewData } from './types';
 
@@ -75,5 +76,8 @@ describe('analytics section', () => {
     expect(html).toContain('66,67%');
     expect(html).toContain('Email');
     expect(html).not.toContain('Яндекс');
+    expect(html.toLowerCase()).not.toContain('highcharts.com');
+    expect(refiqChartBaseOptions.credits?.enabled).toBe(false);
+    expect(refiqChartBaseOptions.exporting?.chartOptions?.credits?.enabled).toBe(false);
   });
 });
